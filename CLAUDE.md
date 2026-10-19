@@ -247,3 +247,6 @@ Brief, dated record of what was worked on per day, in the `Knob: <summary>` form
 - Knob: shows in the Dock (optional), clicking the Dock icon opens the panel, quitting stops the engine safely
 - Knob: drag-to-Applications installer with a designed window; the app installs its own audio device with one password prompt
 - Knob: fixed the Equalizer overflowing with 31 bands; Knob keeps the engine at 10 bands and labels like 1.3K are exact
+- Knob: first public release, 0.1.9, on GitHub; every push to main now publishes a release and installed copies update themselves (signed updates, tampered ones refused)
+- Knob: the standard installer (Knob-Install.pkg) is the supported install again, since dragging the app in never installed the driver; Homebrew install added; Knob now runs on Intel Macs too
+- Knob: README "How it works" redrawn as an illustrated, animated diagram
