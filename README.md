@@ -117,37 +117,17 @@ A supervisor hands your speakers back if the engine ever stops, and Knob never l
 
 ## 🧭 How it works
 
-```mermaid
-flowchart TB
-    subgraph MAC["Your Mac"]
-        direction LR
-        APPS["🎵 Apps<br/>Music, browser, games"]
-        KEYS["⌨️ Volume keys<br/>and Control Center"]
-    end
+<p align="center">
+  <img src="docs/images/how-it-works.svg" width="100%" alt="How Knob works: your apps play into the Knob audio device, which the volume keys control. knob-engine captures it, runs effects and the 10-band equalizer, and plays the result on your HDMI, USB, Bluetooth or built-in output. The menu bar app talks to the engine over a private local socket, starts knob-supervisor, which puts your output back if the engine stops, and updates itself from signed GitHub releases." />
+</p>
 
-    DEV{{"🎛️ Knob audio device<br/>the Mac's output, with volume and mute"}}
-
-    subgraph CORE["Knob"]
-        direction LR
-        ENG["⚙️ knob-engine<br/>effects, EQ, spectrum"]
-        SUP["🛡️ knob-supervisor<br/>restores your output"]
-        UI["🖥️ Menu bar app<br/>SwiftUI panel"]
-    end
-
-    OUT[("🔈 Your speakers<br/>HDMI, USB, Bluetooth, built-in")]
-
-    APPS --> DEV
-    KEYS -->|"volume"| DEV
-    DEV -->|"loopback"| ENG
-    ENG --> OUT
-    UI <-->|"local socket"| ENG
-    UI -->|"starts"| SUP
-    SUP -->|"runs"| ENG
-```
-
-- **The audio device** is the Mac's default output while Knob is on. It owns the volume and mute that the keys control.
-- **The engine** captures that device, runs the effects and the equalizer, and plays the result on your real speakers.
-- **The app** only talks to the engine over a private local socket. Nothing about your audio ever leaves the Mac.
+| | |
+|---|---|
+| 🎛️ **Knob audio device** | The Mac's default output while Knob is on. It owns the volume and mute that the keys control, so they work even on HDMI. |
+| ⚙️ **knob-engine** | Captures that device, runs the effects and the equalizer in real time, and plays the result on your real speakers. |
+| 🛡️ **knob-supervisor** | Watches the engine. If it ever stops, your Mac's normal output comes straight back, so you're never left without sound. |
+| 🖥️ **Menu bar app** | Talks to the engine over a private local socket. Nothing about your audio ever leaves the Mac. |
+| 🔄 **Updates** | Knob checks GitHub for signed releases and installs them itself. |
 
 ---
 

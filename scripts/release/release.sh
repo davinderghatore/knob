@@ -25,8 +25,13 @@ tag="v$version"
 out="$repo_dir/dist/$tag"
 work=$(mktemp -d /private/tmp/knob-release.XXXXXX)
 keychain="$work/release.keychain-db"
+original_keychains=$(security list-keychains -d user | tr -d '"')
 cleanup() {
-    [ -f "$keychain" ] && security delete-keychain "$keychain" 2>/dev/null
+    if [ -f "$keychain" ]; then
+        # shellcheck disable=SC2086
+        security list-keychains -d user -s $original_keychains
+        security delete-keychain "$keychain" 2>/dev/null
+    fi
     rm -rf "$work"
 }
 trap cleanup EXIT
@@ -54,6 +59,14 @@ if [ -n "${KNOB_SIGNING_P12_BASE64:-}" ]; then
     security import "$work/signing.p12" -k "$keychain" -P "$KNOB_SIGNING_P12_PASSWORD" -T /usr/bin/codesign >/dev/null
     security set-key-partition-list -S apple-tool:,apple: -s -k "$keychain_password" "$keychain" >/dev/null
     rm -f "$work/signing.p12"
+    # Older codesign (GitHub's runners) only finds identities in keychains on the search list.
+    # shellcheck disable=SC2086
+    security list-keychains -d user -s "$keychain" $original_keychains
+    if ! security find-identity -p codesigning "$keychain" | grep -q '"Knob Release"'; then
+        echo "The release certificate didn't import: the identity \"Knob Release\" isn't in the keychain." >&2
+        security find-identity -p codesigning "$keychain" >&2
+        exit 1
+    fi
     export KNOB_SIGN_IDENTITY="Knob Release" KNOB_SIGN_KEYCHAIN="$keychain"
 else
     echo "Note: no release certificate, so this trial build is signed ad-hoc."
