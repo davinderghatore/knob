@@ -5,6 +5,7 @@ import SwiftUI
 ///   (none)              real engine and real Mac volume
 ///   --demo              demo engine and demo volume, for trying the panel without the engine
 ///   --snapshot DIR      render the panel in light and dark mode to PNG files, then quit
+///   --icons DIR         render the app icon (1024px) and the About window, then quit
 ///   --volume-check SEC  print real Mac volume changes for SEC seconds, set and restore, then quit
 @main
 struct KnobLauncher {
@@ -12,6 +13,10 @@ struct KnobLauncher {
         let arguments = CommandLine.arguments
         if let index = arguments.firstIndex(of: "--snapshot"), index + 1 < arguments.count {
             Snapshot.run(into: URL(fileURLWithPath: arguments[index + 1]))
+            return
+        }
+        if let index = arguments.firstIndex(of: "--icons"), index + 1 < arguments.count {
+            Snapshot.renderArtwork(into: URL(fileURLWithPath: arguments[index + 1]))
             return
         }
         if let index = arguments.firstIndex(of: "--volume-check"), index + 1 < arguments.count {

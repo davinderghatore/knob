@@ -1,41 +1,284 @@
-# Knob
+<div align="center">
 
-A macOS menu bar app for system-wide sound. Knob gives you a working volume control on outputs that have none (like HDMI monitors), plus presets, effects and a 10-band equalizer.
+<img src="docs/images/banner.svg" alt="Knob: Turn · Tune · Flow" width="100%" />
 
-## How it works
+### Studio sound for every output on your Mac.
 
+A real volume knob for HDMI monitors, five effects, a 10-band equalizer and presets,<br/>all in a menu bar panel that feels like studio hardware.
+
+<br/>
+
+![macOS](https://img.shields.io/badge/macOS-14%2B-111111?style=for-the-badge&logo=apple&logoColor=white)
+![Swift](https://img.shields.io/badge/SwiftUI-Menu%20bar-F05138?style=for-the-badge&logo=swift&logoColor=white)
+![C++](https://img.shields.io/badge/C%2B%2B-Core%20Audio-00599C?style=for-the-badge&logo=cplusplus&logoColor=white)
+![Apple Silicon](https://img.shields.io/badge/Apple%20Silicon-Native-FF6B1F?style=for-the-badge&logo=apple&logoColor=white)
+![License](https://img.shields.io/badge/License-AGPL--3.0-555555?style=for-the-badge)
+
+[✨ Features](#-features) · [🎛️ The panel](#%EF%B8%8F-the-panel) · [🧭 How it works](#-how-it-works) · [🚀 Quick start](#-quick-start) · [🛠️ Develop](#%EF%B8%8F-develop) · [📚 Docs](#-documentation)
+
+</div>
+
+---
+
+## 💡 Why Knob
+
+Plug a Mac into an HDMI or DisplayPort monitor and the volume keys stop working. The level is stuck at 100% and the only way to turn it down is the monitor's own buttons.
+
+Knob places its own audio device between your apps and your speakers. The Mac treats it like real hardware, so the **volume keys, Control Center and Knob's own knob all work again, on any output**. And because every sound now passes through Knob, it can make that sound better on the way.
+
+> **Your level never jumps.** When Knob takes over the output, it carries your volume across, and when it hands the output back, it carries it back. Nothing blasts at 100%, even after a crash.
+
+---
+
+## 🎛️ The panel
+
+<div align="center">
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/panel-dark-effects.png">
+  <img src="docs/images/panel-light-effects.png" width="380" alt="Knob panel: volume knob and the five effects" />
+</picture>
+&nbsp;&nbsp;
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/panel-dark-equalizer.png">
+  <img src="docs/images/panel-light-equalizer.png" width="380" alt="Knob panel: the 10-band equalizer over the live spectrum" />
+</picture>
+
+<sub>Follows your Mac's light or dark mode. The analyser screen stays dark, like real gear.</sub>
+
+</div>
+
+---
+
+## ✨ Features
+
+<table>
+<tr>
+<td width="50%" valign="top">
+
+### 🔊 Volume for every output
+HDMI, DisplayPort, USB, Bluetooth or built-in speakers. The **volume keys** and the on-screen HUD work again, and the big knob follows them with a spring.
+
+</td>
+<td width="50%" valign="top">
+
+### 🎚️ Five effects
+**Clarity, Ambience, Surround Sound, Dynamic Boost and Bass Boost**, each on its own realistic knob. Double-click any knob to reset it.
+
+</td>
+</tr>
+<tr>
+<td valign="top">
+
+### 📊 10-band equalizer
+Hardware faders with a centre detent, drawn over a **live spectrum analyser** that moves with your music.
+
+</td>
+<td valign="top">
+
+### 🎼 Presets
+General, Music, Movies, Gaming, Voice, Bass Boost, Streaming Video and more, with **previous and next** buttons for quick flicking.
+
+</td>
+</tr>
+<tr>
+<td valign="top">
+
+### ⏻ One switch
+**ON** makes Knob your output and turns the effects on. **OFF** bypasses the effects instantly. Nothing restarts and nothing is lost.
+
+</td>
+<td valign="top">
+
+### 💾 Remembers your sound
+Every knob, fader and preset is saved a moment after you change it and comes back the next time Knob starts.
+
+</td>
+</tr>
+<tr>
+<td valign="top">
+
+### 📈 Live meters
+Left and right level meters on a real dB scale, and an orange glow above the screen that **breathes with the music**.
+
+</td>
+<td valign="top">
+
+### 🛡️ Safe by design
+A supervisor hands your speakers back if the engine ever stops, and Knob never leaves them stuck at full volume.
+
+</td>
+</tr>
+</table>
+
+**Also included:** 🌗 light and dark mode · 🪀 spring animations with Framer Motion settings · 👆 trackpad ticks at the knob's end stops · ♿️ VoiceOver labels and adjustable controls · ⌨️ arrow keys on the tabs · 🧪 demo mode with sample data
+
+---
+
+## 🧭 How it works
+
+```mermaid
+flowchart TB
+    subgraph MAC["Your Mac"]
+        direction LR
+        APPS["🎵 Apps<br/>Music, browser, games"]
+        KEYS["⌨️ Volume keys<br/>and Control Center"]
+    end
+
+    DEV{{"🎛️ Knob audio device<br/>the Mac's output, with volume and mute"}}
+
+    subgraph CORE["Knob"]
+        direction LR
+        ENG["⚙️ knob-engine<br/>effects, EQ, spectrum"]
+        SUP["🛡️ knob-supervisor<br/>restores your output"]
+        UI["🖥️ Menu bar app<br/>SwiftUI panel"]
+    end
+
+    OUT[("🔈 Your speakers<br/>HDMI, USB, Bluetooth, built-in")]
+
+    APPS --> DEV
+    KEYS -->|"volume"| DEV
+    DEV -->|"loopback"| ENG
+    ENG --> OUT
+    UI <-->|"local socket"| ENG
+    UI -->|"starts"| SUP
+    SUP -->|"runs"| ENG
 ```
-apps ──▶ Knob audio device (driver/)      the Mac's default output; the volume keys control it
-           │  loopback
-           ▼
-         knob-engine (engine/ + dsp/)       processes the sound and plays it on your real output
-           ▲  local socket
-           │
-         Knob menu bar app (app/)           the controls you see
-```
 
-## Status
+- **The audio device** is the Mac's default output while Knob is on. It owns the volume and mute that the keys control.
+- **The engine** captures that device, runs the effects and the equalizer, and plays the result on your real speakers.
+- **The app** only talks to the engine over a private local socket. Nothing about your audio ever leaves the Mac.
 
-| Part | State |
-|---|---|
-| Audio device (driver) | Working, tests pass |
-| Engine and sound processing | Working, tests pass |
-| Menu bar app | In progress |
-| Installer | Scripts ready, used once the app exists |
+---
 
-## Build
+## 🚀 Quick start
 
-Needs macOS 14 or later, Apple Command Line Tools and CMake (`brew install cmake`).
+**1. Install prerequisites**
 
-```sh
+- macOS **14** or later
+- Apple Command Line Tools: `xcode-select --install`
+- CMake: `brew install cmake`
+
+**2. Build**
+
+```bash
+git clone git@github.com:simranxdhindsa/knob.git && cd knob
+
 cmake -S . -B build -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_DEPLOYMENT_TARGET=14.0
-cmake --build build -j8                  # knob-engine, knob-supervisor, sound processing library
-bash driver/build.sh "$PWD/build/driver" # Knob.driver
+cmake --build build -j8                  # sound engine and supervisor
+bash driver/build.sh "$PWD/build/driver" # audio device
+app/build-app.sh                         # build/Knob.app
 ```
 
-Tests: see [docs/testing.md](docs/testing.md).
+**3. Install the audio device and run**
 
-## License
+```bash
+sudo cp -R build/driver/Knob.driver /Library/Audio/Plug-Ins/HAL/ && sudo killall coreaudiod
+open build/Knob.app
+```
 
-Free software under the GNU Affero General Public License v3. See [LICENSE](LICENSE) and [NOTICE.md](NOTICE.md). If you share Knob with anyone, share its source code too.
+Click the knob in your menu bar and flip the switch to **ON**. The first time, macOS asks for audio access: choose **Allow**. It is only used to process sound on your Mac; nothing is recorded or sent anywhere.
+
+---
+
+## 🛠️ Develop
+
+| Command (from repo root) | What it does |
+|---|---|
+| `npm run dev` | ⚡ Rebuilds and relaunches Knob about 3 seconds after every save |
+| `npm run dev:demo` | 🧪 The same, on sample data: no engine or audio device needed |
+| `npm run dev:once` | ▶️ Build and launch once |
+| `app/build-app.sh` | 📦 Build `build/Knob.app` with the engine inside |
+| `Knob --snapshot DIR` | 📸 Render the panel in light and dark, engine on and off |
+| `Knob --icons DIR` | 🎨 Render the app icon and the About window |
+| `Knob --volume-check 3` | 🔊 Check the real Mac volume path, then restore it |
+
+`npm` is only a shortcut: there are no Node dependencies.
+
+---
+
+## 🏗️ Project structure
+
+<details>
+<summary><b>📁 Expand the tree</b></summary>
+
+<br/>
+
+```
+knob/
+├── app/                      SwiftUI menu bar app
+│   ├── Sources/Knob/
+│   │   ├── Components/       RealisticKnob, HardwareFader, SegmentedTabs, PowerSwitch…
+│   │   ├── Views/            Panel, header, volume, screen, About, app icon
+│   │   ├── State/            KnobModel (every action), presets, session
+│   │   ├── Engine/           Socket client, launcher, devices, volume handoff
+│   │   └── Theme/            Palette (light/dark tokens), Motion (springs)
+│   ├── Resources/            AppIcon.icns
+│   └── build-app.sh          Builds and signs Knob.app
+├── driver/                   Knob audio device (AudioServerPlugIn)
+├── engine/                   knob-engine and knob-supervisor (Core Audio, C++)
+├── dsp/                      Effects, equalizer, presets and spectrum (real-time C/C++)
+├── presets/                  Factory presets
+├── tests/                    Driver, engine and DSP tests
+├── packaging/                Installer, signing, uninstall, source bundle
+├── scripts/dev.sh            Live dev mode
+├── docs/                     Testing guides and README artwork
+└── CLAUDE.md                 Architecture rules and conventions
+```
+
+</details>
+
+---
+
+## 📚 Documentation
+
+| | Doc | Covers |
+|---|---|---|
+| 🧪 | [`testing.md`](./docs/testing.md) | Full test suite and the bit-identical sound check |
+| ✅ | [`uat-testing.md`](./docs/uat-testing.md) | How UI is verified: like a real user, not by DOM counts |
+| 🎛️ | [`driver/README.md`](./driver/README.md) | The audio device's stream, clock and control contract |
+| 🧱 | [`CLAUDE.md`](./CLAUDE.md) | Architecture, risk areas, design system and project rules |
+| 📄 | [`NOTICE.md`](./NOTICE.md) | License and attribution notes |
+
+---
+
+## 🧱 Conventions that keep it clean
+
+- **🎨 Theme tokens only.** Every colour comes from `Palette.swift`, so light and dark mode both just work.
+- **🪀 One motion system.** Every animation comes from `Motion.swift`; drags follow your finger, outside changes spring into place.
+- **🎛️ The engine is the source of truth.** Devices, presets, bands and ranges are read live, never hardcoded.
+- **⏱️ Real-time safe.** Nothing allocates, locks or blocks on the audio thread.
+- **🔁 Bit-identical sound.** Any change to the sound processing is checked against reference renders.
+- **🐞 Reproduce before patching.** Bugs get reproduced against the real pipeline before a fix is claimed.
+
+Full rules live in [`CLAUDE.md`](./CLAUDE.md).
+
+---
+
+## 🙌 Credits
+
+Knob is designed and built by **[Simran Dhindsa](https://github.com/simranxdhindsa)**.
+
+- Tabs adapted from the [Segmented Control](https://21st.dev/halaska-studio/segmented-control) by Halaska (MIT) on 21st.dev.
+- Power switch adapted from the [Switch](https://21st.dev/serafimcloud/switch) by serafimcloud on 21st.dev.
+- The audio device follows Apple's AudioServerPlugIn sample code (`driver/apple-sample-license.txt`).
+- Knob builds on earlier free software; its copyright and license notices are kept at the top of the files they apply to.
+
+## 📄 License
+
+Free software under the [GNU Affero General Public License v3](LICENSE). See [`NOTICE.md`](NOTICE.md). If you share Knob with anyone, share its source code too.
+
+---
+
+<div align="center">
+
+<img src="docs/images/knob-mark.svg" width="48" alt="" />
+
+**TURN · TUNE · FLOW**
+
+<sub>Built by <a href="https://github.com/simranxdhindsa">Simran Dhindsa</a></sub>
+
+<sub><a href="#">⬆ Back to top</a></sub>
+
+</div>

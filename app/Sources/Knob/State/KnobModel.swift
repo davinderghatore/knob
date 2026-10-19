@@ -26,6 +26,8 @@ final class KnobModel: ObservableObject {
     /// A plain-language message for the panel, such as why the engine couldn't start.
     @Published private(set) var notice: String?
     @Published private(set) var starting = false
+    /// True when the Mac's sound actually goes through Knob (Knob is the default output).
+    @Published private(set) var routingActive = false
 
     private let engine: SoundEngine
     private let volumeControl: VolumeControl
@@ -36,6 +38,10 @@ final class KnobModel: ObservableObject {
     private var flushTask: Task<Void, Never>?
     private var editing = 0
     private var spectrumPeak = 0.05
+    private var sessionSaveTask: Task<Void, Never>?
+    /// What the user asked for with the switch. While ON, Knob keeps itself as the Mac's output.
+    private var wantsOn = false
+    private var reclaiming = false
 
     init(engine: SoundEngine, volume: VolumeControl, launcher: EngineLauncher? = nil) {
         self.engine = engine
@@ -49,9 +55,18 @@ final class KnobModel: ObservableObject {
             self.volume = volume
             self.muted = muted
             self.volumeControllable = controllable
+            if self.knobIsOutput { VolumeHandoff.remember(volume) }
         }
         volumeControl.start()
+        if launcher != nil {
+            // A previous run may have stopped while speakers were raised underneath Knob.
+            if !knobIsOutput { VolumeHandoff.giveBack() }
+            HardwareDevices.observeDefaultOutput { [weak self] in self?.defaultOutputChanged() }
+        }
         presets = Preset.factory()
+        if let path = UserDefaults.standard.string(forKey: PersistKey.lastPreset.rawValue) {
+            currentPreset = presets.first { $0.url.path == path }
+        }
         Task { await refresh() }
     }
 
@@ -99,7 +114,9 @@ final class KnobModel: ObservableObject {
     }
 
     private func apply(_ state: EngineState, includeControls: Bool) {
-        powerOn = !state.bypassed
+        routingActive = state.routingActive
+        // ON means effects are on AND the Mac's sound goes through Knob; anything else is OFF.
+        powerOn = !state.bypassed && state.routingActive
         outputUID = state.outputUID
         peakLeft = state.peakLeft
         peakRight = state.peakRight
@@ -125,21 +142,27 @@ final class KnobModel: ObservableObject {
 
     func toggleMute() { volumeControl.setMuted(!muted) }
 
-    /// ON starts the engine if it isn't running; OFF stops the engine Knob started (giving the
-    /// Mac its normal output back), or just bypasses effects on an engine Knob didn't start.
+    /// ON starts the engine if needed, turns effects on, and makes Knob the Mac's output.
+    /// OFF only bypasses the effects: the engine keeps running and stays the output, so every
+    /// setting stays where it was and the volume keys keep working.
     func setPower(_ on: Bool) {
         guard !starting else { return }
+        wantsOn = on
         if on, connection != .online {
             Task { await startEngine() }
             return
         }
-        if !on, let launcher, launcher.isRunning {
-            Task { await stopEngine() }
-            return
-        }
         powerOn = on
         notice = nil
-        Task { _ = try? await engine.send("setBypass", ["value": !on]) }
+        Task {
+            if on {
+                _ = await succeeds("setBypass", ["value": false])
+                if !routingActive { await takeOverOutput(followingSystem: true) }
+            } else {
+                _ = await succeeds("setBypass", ["value": true])
+            }
+            await refreshState()
+        }
     }
 
     private func startEngine() async {
@@ -147,10 +170,13 @@ final class KnobModel: ObservableObject {
         starting = true
         notice = "Starting the sound engine..."
         defer { starting = false }
+        let physical = HardwareDevices.preferredPhysicalOutput()
+        let session = Self.sessionURL.flatMap { FileManager.default.fileExists(atPath: $0.path) ? $0 : nil }
         do {
-            try await launcher.start(preset: currentPreset?.url)
+            try await launcher.start(preset: session ?? currentPreset?.url)
         } catch {
             notice = error.localizedDescription
+            wantsOn = false
             return
         }
         for _ in 0..<50 where connection != .online {
@@ -160,20 +186,82 @@ final class KnobModel: ObservableObject {
         guard connection == .online else {
             launcher.stop()
             notice = EngineLauncher.Problem.launchFailed.errorDescription
+            wantsOn = false
             return
         }
-        _ = try? await engine.send("setBypass", ["value": false])
-        powerOn = true
-        notice = nil
+        _ = await succeeds("setBypass", ["value": false])
+        for _ in 0..<30 where !routingActive {   // the engine makes itself the output once audio flows
+            try? await Task.sleep(for: .milliseconds(200))
+            await refreshState(includeControls: true)
+        }
+        if routingActive { VolumeHandoff.takeOver(from: physical) } else { await takeOverOutput(followingSystem: false) }
     }
 
-    /// Hands the Mac its normal output back, then stops the engine.
-    func stopEngine() async {
-        guard let launcher, launcher.isRunning else { return }
-        _ = try? await engine.send("activateRouting", ["value": false])
-        _ = try? await engine.send("shutdown", [:])
-        launcher.stop()
+    /// Makes Knob the Mac's output (playing through the output the user picked last), carrying
+    /// the volume over so nothing jumps.
+    private func takeOverOutput(followingSystem: Bool) async {
+        if followingSystem { await followSystemOutput() }
+        let physical = outputUID.flatMap(HardwareDevices.device(uid:))
+        for _ in 0..<15 {   // the engine refuses until audio is flowing again after an output change
+            if await succeeds("activateRouting", ["value": true]) {
+                VolumeHandoff.takeOver(from: physical)
+                notice = nil
+                await refreshState()
+                return
+            }
+            try? await Task.sleep(for: .milliseconds(200))
+        }
+        notice = "Knob couldn't take over the sound output. Try again."
+    }
+
+    /// If the user picked different speakers in the Sound menu, play there.
+    private func followSystemOutput() async {
+        let current = HardwareDevices.defaultOutputID
+        guard let device = HardwareDevices.all().first(where: { $0.id == current && $0.isPhysicalOutput }),
+              device.uid != outputUID else { return }
+        if await succeeds("setOutputUID", ["outputUID": device.uid]) { outputUID = device.uid }
+    }
+
+    /// Something else became the Mac's output (the Sound menu, or the engine stopping).
+    /// Give the volume back right away; if Knob is meant to be on, take over again on the new output.
+    private func defaultOutputChanged() {
+        guard !knobIsOutput else { return }
+        VolumeHandoff.giveBack()
+        routingActive = false
         powerOn = false
+        guard wantsOn, connection == .online, !reclaiming, !starting else { return }
+        reclaiming = true
+        Task {
+            await takeOverOutput(followingSystem: true)
+            reclaiming = false
+        }
+    }
+
+    private var knobIsOutput: Bool {
+        HardwareDevices.device(uid: HardwareDevices.knobUID)?.id == HardwareDevices.defaultOutputID
+    }
+
+    /// Sends a command and reports whether the engine accepted it (a reply with no data is success).
+    private func succeeds(_ command: String, _ arguments: [String: Any]) async -> Bool {
+        do { _ = try await engine.send(command, arguments); return true } catch { return false }
+    }
+
+    private func refreshState(includeControls: Bool = false) async {
+        if let state = try? await engine.send("getState", [:]) { apply(EngineState(json: state), includeControls: includeControls) }
+    }
+
+    /// Saves the current sound, hands the Mac its normal output back (with Knob's volume),
+    /// then stops the engine.
+    func stopEngine() async {
+        guard launcher != nil, connection == .online else { return }
+        wantsOn = false
+        await saveSession()
+        _ = await succeeds("activateRouting", ["value": false])
+        VolumeHandoff.giveBack()
+        _ = await succeeds("shutdown", [:])
+        launcher?.stop()
+        powerOn = false
+        routingActive = false
         connection = .offline
         notice = nil
     }
@@ -183,6 +271,34 @@ final class KnobModel: ObservableObject {
             await stopEngine()
             NSApp.terminate(nil)
         }
+    }
+
+    // MARK: Session (the current sound, kept across restarts)
+
+    /// Where the current sound is kept between runs. One file per app copy, so the dev copy
+    /// never overwrites the installed one.
+    static var sessionURL: URL? {
+        guard let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+        else { return nil }
+        let folder = support.appendingPathComponent(Bundle.main.bundleIdentifier ?? "io.github.simranxdhindsa.knob")
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        return folder.appendingPathComponent("session.fac")
+    }
+
+    /// Saves about a second after the last change, so dragging a knob writes once.
+    private func scheduleSessionSave() {
+        guard launcher != nil else { return }
+        sessionSaveTask?.cancel()
+        sessionSaveTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(1))
+            guard !Task.isCancelled else { return }
+            await self?.saveSession()
+        }
+    }
+
+    private func saveSession() async {
+        guard launcher != nil, connection == .online, let url = Self.sessionURL else { return }
+        _ = try? await engine.send("savePreset", ["path": url.path])
     }
 
     func setEffect(_ slot: EffectSlot, _ value: Double) {
@@ -200,9 +316,11 @@ final class KnobModel: ObservableObject {
 
     func select(_ preset: Preset) {
         currentPreset = preset
+        UserDefaults.standard.set(preset.url.path, forKey: PersistKey.lastPreset.rawValue)
         Task {
             _ = try? await engine.send("setPreset", ["path": preset.url.path])
             if let state = try? await engine.send("getState", [:]) { apply(EngineState(json: state), includeControls: true) }
+            scheduleSessionSave()
         }
     }
 
@@ -228,6 +346,7 @@ final class KnobModel: ObservableObject {
             self.pending.removeAll()
             self.flushTask = nil
             for (name, value) in batch { _ = try? await self.engine.send("setParam", ["name": name, "value": value]) }
+            self.scheduleSessionSave()
         }
     }
 }

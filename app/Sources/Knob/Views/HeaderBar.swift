@@ -18,7 +18,7 @@ struct HeaderBar: View {
             PowerSwitch(isOn: Binding(get: { model.powerOn }, set: { model.setPower($0) }), label: "Sound effects")
                 .disabled(model.starting)
             Menu {
-                Button("About Knob", action: showAbout)
+                Button("About Knob") { AboutWindow.show() }
                 Divider()
                 Button("Quit Knob") { model.quit() }.keyboardShortcut("q")
             } label: {
@@ -36,14 +36,6 @@ struct HeaderBar: View {
         }
     }
 
-    private func showAbout() {
-        let credits = NSAttributedString(
-            string: "Free software under the GNU Affero General Public License v3. It comes with no warranty. "
-                + "The complete source code is included with the installer.",
-            attributes: [.font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.secondaryLabelColor])
-        NSApp.activate(ignoringOtherApps: true)
-        NSApp.orderFrontStandardAboutPanel(options: [.credits: credits])
-    }
 }
 
 /// Preset picker with previous/next buttons, like the preset strip on studio gear.

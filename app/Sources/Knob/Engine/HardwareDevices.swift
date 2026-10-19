@@ -1,3 +1,4 @@
+import AudioToolbox
 import CoreAudio
 import Foundation
 
@@ -55,6 +56,35 @@ enum HardwareDevices {
                                      kAudioDeviceTransportTypeUSB, kAudioDeviceTransportTypeBluetooth]
         return outputs.first { external.contains($0.transport) } ?? outputs.first
     }
+
+    static func device(uid: String) -> HardwareDevice? { all().first { $0.uid == uid } }
+
+    /// A device's main output volume (0...1), or nil if it has none the app can set (HDMI).
+    static func volume(of id: AudioObjectID) -> Double? {
+        var address = mainVolumeAddress
+        var settable: DarwinBoolean = false
+        guard AudioObjectHasProperty(id, &address),
+              AudioObjectIsPropertySettable(id, &address, &settable) == noErr, settable.boolValue else { return nil }
+        var value = Float32(0), size = UInt32(MemoryLayout<Float32>.size)
+        guard AudioObjectGetPropertyData(id, &address, 0, nil, &size, &value) == noErr else { return nil }
+        return Double(value)
+    }
+
+    static func setVolume(_ volume: Double, of id: AudioObjectID) {
+        var address = mainVolumeAddress
+        var value = Float32(min(max(volume, 0), 1))
+        AudioObjectSetPropertyData(id, &address, 0, nil, UInt32(MemoryLayout<Float32>.size), &value)
+    }
+
+    /// Calls `handler` on the main queue whenever the Mac's default output changes, whoever changed it.
+    static func observeDefaultOutput(_ handler: @escaping () -> Void) {
+        var address = defaultOutputAddress
+        AudioObjectAddPropertyListenerBlock(AudioObjectID(kAudioObjectSystemObject), &address, .main) { _, _ in handler() }
+    }
+
+    private static let mainVolumeAddress = AudioObjectPropertyAddress(
+        mSelector: kAudioHardwareServiceDeviceProperty_VirtualMainVolume,
+        mScope: kAudioDevicePropertyScopeOutput, mElement: kAudioObjectPropertyElementMain)
 
     private static let defaultOutputAddress = AudioObjectPropertyAddress(
         mSelector: kAudioHardwarePropertyDefaultOutputDevice,

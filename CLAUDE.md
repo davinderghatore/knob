@@ -31,6 +31,7 @@ app/build-app.sh [debug|release]                          # build/Knob.app (pres
 build/Knob.app/Contents/MacOS/Knob --demo                 # sample engine + sample volume
 build/Knob.app/Contents/MacOS/Knob --snapshot DIR         # PNGs: light/dark x effects/equalizer, engine on (panel-*) and off (offline-*)
 build/Knob.app/Contents/MacOS/Knob --volume-check 3       # real Mac volume: listen, set, restore
+build/Knob.app/Contents/MacOS/Knob --icons DIR            # app icon (1024px) + About window, light/dark
 ```
 - Look at the `--snapshot` PNGs after every UI change: this terminal has no Screen Recording permission, so the live menu bar can't be captured.
 - The user often has `npm run dev` running (`build/dev/Knob.app`). Never `pkill -x Knob`: that also kills their dev copy. Stop only the exact bundle you launched.
@@ -82,6 +83,10 @@ apps ──▶ Knob.driver (driver/)              default output; owns the volum
 
 - Engine commands (`engine/command-dispatcher.mm`): `getDevices`, `getState`, `getMeters`, `setBypass`, `setOutputUID`, `activateRouting`, `setPreset`, `savePreset`, `setParam`, `setParams`, `setNumEqBands`, `shutdown`. Read the dispatcher and the tests for exact request/response shapes; don't guess the protocol.
 - Knob must never leave `Knob_Virtual` as the default output with no engine running.
+- **Power switch lifecycle** (`State/KnobModel.swift`, `Engine/EngineLauncher.swift`): ON with no engine checks the helpers, that `Knob_Virtual` is installed, picks a physical output, asks for audio access, runs `Helpers/knob-supervisor --engine ... --output UID --activate --preset SESSION`, waits for the socket, then un-bypasses. ON with a running engine un-bypasses and, if Knob isn't the output, follows the output picked in the Sound menu and re-activates routing (with retries; the engine refuses until audio flows). **OFF only bypasses**: the engine keeps running and stays the output, so settings never reset. Quit saves the session, deactivates routing, shuts the engine down and SIGTERMs the supervisor. The switch shows ON only when effects are on AND Knob is the output. Every failure becomes a plain sentence in `model.notice`.
+- **Session**: `~/Library/Application Support/<bundle id>/session.fac` (dev and installed copies stay apart), saved through the engine's `savePreset` about 1s after the last change and on quit, loaded with `--preset` on the next start.
+- **Volume handoff** (`Engine/VolumeHandoff.swift`): taking over gives Knob's device the physical output's volume and raises the physical output to 100% underneath; outputs without volume (HDMI) get the last remembered level. Handing back (quit, or the user picking another output) gives the physical output Knob's level. The raised device is persisted (`PersistKey.raisedOutputUID`) and given back on the next launch, so speakers are never left at 100%. While ON, a default-output change made elsewhere is followed and Knob takes the output back.
+- `app/build-app.sh` embeds `build/knob-engine` and `build/knob-supervisor` when CMake has built them, and signs the app and helpers with `packaging/audio-input.entitlements`.
 
 ### Risk profile
 1. **Driver** (`driver/`): affects system audio for every app. Treat changes with extra scrutiny and flag them clearly for human review.
@@ -224,3 +229,7 @@ Brief, dated record of what was worked on per day, in the `Knob: <summary>` form
 - Knob: first menu bar app, styled as studio hardware in light and dark: realistic volume knob on the real Mac volume (follows the volume keys), five effect knobs, 10-band EQ faders, live spectrum and level meters, preset and output pills
 - Knob: ported two 21st.dev components (Segmented Control for the Effects/Equalizer tabs, Switch for power); springs use Framer Motion settings in SwiftUI
 - Knob: dev mode now opens the panel by itself after each relaunch
+- Knob: OFF now only bypasses the effects, so settings never reset; the sound is saved and restored across restarts
+- Knob: the switch makes Knob the Mac's output, follows outputs picked in the Sound menu, and carries the volume over both ways (speakers never left at 100%)
+- Knob: installed Knob's own audio device on this Mac, replacing the old one
+- Knob: new app icon, redesigned About window with credits to Simran Dhindsa, and a README in Velocity's style with new banner artwork
