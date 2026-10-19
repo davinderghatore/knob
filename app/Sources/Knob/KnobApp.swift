@@ -39,6 +39,7 @@ struct KnobApp: App {
         _model = StateObject(wrappedValue: model)
         AppDelegate.model = model
         model.start()
+        Updater.shared.start()
         DispatchQueue.main.async { DevWindow.showIfRequested(model: model) }
         ProcessInfo.processInfo.disableAutomaticTermination("Knob lives in the menu bar")
         if ProcessInfo.processInfo.environment["KNOB_DEV_OPEN_POPOVER"] == "1" {

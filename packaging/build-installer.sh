@@ -5,6 +5,8 @@ repo_dir=$(cd -- "$packaging_dir/.." && pwd)
 app=${1:?Pass the built Knob.app path}
 driver=${2:?Pass the built Knob.driver path}
 output=${3:-$repo_dir/dist}
+# Same certificate as app/build-app.sh (KNOB_SIGN_IDENTITY), so the installed app keeps its permissions.
+identity=${KNOB_SIGN_IDENTITY:--}
 version=$(python3 - "$app/Contents/Info.plist" <<'PY'
 import plistlib
 import sys
@@ -35,15 +37,30 @@ codesign --sign - --options runtime --timestamp=none "$staging/scripts/audio-ins
 chmod 755 "$staging/scripts/"*
 cp "$staging/scripts/audio-install-guard" "$staging/root/Applications/Knob.app/Contents/Helpers/audio-install-guard"
 for target in knob-engine knob-supervisor; do
-    codesign --force --sign - --options runtime --timestamp=none \
+    codesign --force --sign "$identity" ${KNOB_SIGN_KEYCHAIN:+--keychain "$KNOB_SIGN_KEYCHAIN"} --options runtime --timestamp=none \
         --entitlements "$packaging_dir/audio-input.entitlements" \
         "$staging/root/Applications/Knob.app/Contents/Helpers/$target"
 done
-codesign --force --sign - --options runtime --timestamp=none \
-    --entitlements "$packaging_dir/audio-input.entitlements" "$staging/root/Applications/Knob.app"
+codesign --force --sign "$identity" ${KNOB_SIGN_KEYCHAIN:+--keychain "$KNOB_SIGN_KEYCHAIN"} --options runtime --timestamp=none \
+    --entitlements "$packaging_dir/app.entitlements" "$staging/root/Applications/Knob.app"
 codesign --verify --deep --strict "$staging/root/Applications/Knob.app"
+# The same app, zipped, is what installed copies download as an update (no driver change).
+ditto -c -k --sequesterRsrc --keepParent "$staging/root/Applications/Knob.app" "$output/Knob-$version.zip"
 codesign --verify --strict "$staging/root/Library/Audio/Plug-Ins/HAL/Knob.driver"
-pkgbuild --root "$staging/root" --scripts "$staging/scripts" --ownership recommended \
+# Install exactly into /Applications and the HAL folder: without this, macOS may "update" some other
+# copy of Knob.app it finds on the disk (a build folder, a drag-installed copy) instead.
+pkgbuild --analyze --root "$staging/root" "$staging/components.plist" >/dev/null
+python3 - "$staging/components.plist" <<'PY2'
+import plistlib
+import sys
+with open(sys.argv[1], 'rb') as source:
+    components = plistlib.load(source)
+for component in components:
+    component['BundleIsRelocatable'] = False
+with open(sys.argv[1], 'wb') as output:
+    plistlib.dump(components, output)
+PY2
+pkgbuild --root "$staging/root" --component-plist "$staging/components.plist" --scripts "$staging/scripts" --ownership recommended \
     --identifier io.github.simranxdhindsa.knob --version "$version" --install-location / \
     "$staging/knob-component.pkg"
 python3 - "$staging/root/Applications/Knob.app/Contents/MacOS/Knob" "$staging/requirements.plist" <<'PY'

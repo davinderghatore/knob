@@ -57,6 +57,13 @@ npm run dev:once   # build and launch once
 ### Installing for a real test
 Installing changes system audio and needs admin rights. Never run the installer or restart `coreaudiod` yourself. Give the user the `! sudo installer -pkg ... -target /` command and tell them to quit Knob from the menu bar first. `packaging/build-installer.sh APP DRIVER [OUTPUT]` builds `Knob.dmg` and `Knob-Install.pkg` once `Knob.app` exists.
 
+### Releases and auto-updates
+- **Pushing to `main` publishes a public release** that every installed Knob downloads and installs within hours. Push work-in-progress to `dev`; merge to `main` only when the user asks for a release. Details: [`docs/releasing.md`](docs/releasing.md).
+- `npm run release:trial` builds the full release locally into `dist/` without publishing. Run it before merging to `main`.
+- The standard installer (`Knob-Install.pkg`) is the supported install, since it installs the driver. Don't point users at drag-and-drop.
+- Release keys live in `~/.knob-release-keys` and GitHub secrets. Never print them, commit them, or paste them anywhere.
+- The app is signed with `packaging/app.entitlements` (adds `disable-library-validation` so the bundled Sparkle.framework loads without an Apple Team ID); the engine helpers keep `audio-input.entitlements`.
+
 ## Architecture
 
 ```

@@ -153,18 +153,29 @@ flowchart TB
 
 ## 🚀 Quick start
 
-### 💿 Install from the disk image
+### 💿 Install
 
-1. Open **`Knob-0.1.0.dmg`** and drag **Knob** into **Applications**.
-2. Open Knob. It appears in your menu bar and the Dock.
-3. Flip the switch to **ON**. The first time, Knob shows an **Install** button for its audio device: click it and enter your Mac password once.
-4. When macOS asks for audio access, choose **Allow**. It is only used to process sound on your Mac; nothing is recorded or sent anywhere.
+1. Download **[Knob.dmg](https://github.com/simranxdhindsa/knob/releases/latest/download/Knob.dmg)** from the latest release.
+2. Open it, then open **`Knob-Install.pkg`** and follow the steps. It asks for your Mac password once, because it adds Knob's audio device to the system.
+3. Sound pauses for a moment while the Mac's audio service restarts, then Knob opens in your menu bar.
+4. Flip the switch to **ON**. When macOS asks for audio access, choose **Allow**. It is only used to process sound on your Mac; nothing is recorded or sent anywhere.
 
-<sub>Knob isn't notarized yet, so the first launch may need right-click → **Open**.</sub>
+<sub>Knob isn't notarized yet. If macOS says it can't verify the installer, open **System Settings → Privacy & Security** and click **Open Anyway**.</sub>
+
+Or with [Homebrew](https://brew.sh):
+
+```bash
+brew tap simranxdhindsa/knob https://github.com/simranxdhindsa/knob
+brew install --cask simranxdhindsa/knob/knob
+```
+
+### 🔄 Updates
+
+Knob updates itself. It checks for a new version when it starts and every few hours, installs it in the background and reopens, so you never need to download it again. **Check for Updates…** in Knob's menu checks right away. Every update is signed, and Knob refuses any that isn't.
 
 ### 🔨 Build it yourself
 
-**Prerequisites:** macOS **14** or later · Apple Command Line Tools (`xcode-select --install`) · CMake (`brew install cmake`) · dmgbuild for the installer (`uv tool install dmgbuild`)
+**Prerequisites:** macOS **14** or later · Apple Command Line Tools (`xcode-select --install`) · CMake (`brew install cmake`)
 
 ```bash
 git clone git@github.com:simranxdhindsa/knob.git && cd knob
@@ -174,7 +185,7 @@ cmake -S . -B build -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Release \
 cmake --build build -j8                  # sound engine and supervisor
 bash driver/build.sh "$PWD/build/driver" # audio device
 app/build-app.sh                         # build/Knob.app, with the engine and audio device inside
-packaging/build-dmg.sh                   # dist/Knob-<version>.dmg
+bash scripts/release/release.sh          # dist/v<version>/: Knob.dmg with the installer (trial, publishes nothing)
 ```
 
 ---

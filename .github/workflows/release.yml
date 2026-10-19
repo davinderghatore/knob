@@ -1,0 +1,36 @@
+name: Release
+
+# Every push to main builds Knob and publishes a GitHub release. Installed copies of Knob read
+# releases/latest/download/appcast.xml and update themselves. Docs-only pushes don't release.
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - ".claude/**"
+      - "LICENSE"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Build and publish
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          KNOB_SIGNING_P12_BASE64: ${{ secrets.KNOB_SIGNING_P12_BASE64 }}
+          KNOB_SIGNING_P12_PASSWORD: ${{ secrets.KNOB_SIGNING_P12_PASSWORD }}
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: bash scripts/release/release.sh --publish

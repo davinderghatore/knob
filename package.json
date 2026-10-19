@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "bash scripts/dev.sh",
     "dev:demo": "bash scripts/dev.sh --demo",
-    "dev:once": "bash scripts/dev.sh --once"
+    "dev:once": "bash scripts/dev.sh --once",
+    "release:trial": "bash scripts/release/release.sh",
+    "release:secrets": "bash scripts/release/set-github-secrets.sh"
   }
 }

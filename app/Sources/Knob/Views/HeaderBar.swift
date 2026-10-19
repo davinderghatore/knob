@@ -20,6 +20,9 @@ struct HeaderBar: View {
                 .disabled(model.starting)
             Menu {
                 Button("About Knob") { AboutWindow.show() }
+                if Updater.shared.isAvailable {
+                    Button("Check for Updates…") { Updater.shared.checkForUpdates() }
+                }
                 Toggle("Show in Dock", isOn: $showInDock)
                 Divider()
                 Button("Quit Knob") { model.quit() }.keyboardShortcut("q")

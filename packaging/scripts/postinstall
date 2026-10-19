@@ -1,6 +1,16 @@
 #!/bin/sh
 set -eu
+target=${3:-/}
+target=${target%/}
 if /usr/bin/pgrep -x coreaudiod >/dev/null; then
     /usr/bin/killall coreaudiod
 fi
-printf '%s\n' 'Knob installed in /Applications. Open Knob after the audio service restarts.'
+user=$(/usr/bin/stat -f%Su /dev/console)
+if [ -n "$user" ] && [ "$user" != root ] && [ "$user" != loginwindow ]; then
+    # Owned by the user, so Knob can update itself later without asking for a password.
+    /usr/sbin/chown -R "$user":admin "$target/Applications/Knob.app"
+    # Open Knob once the audio service is back, as the user (not as root).
+    uid=$(/usr/bin/id -u "$user")
+    (/bin/sleep 3; /bin/launchctl asuser "$uid" /usr/bin/open "$target/Applications/Knob.app") >/dev/null 2>&1 &
+fi
+printf '%s\n' 'Knob installed in /Applications.'

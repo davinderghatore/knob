@@ -104,7 +104,7 @@ PLIST
         fi
     done
     codesign --force --sign - --options runtime --timestamp=none \
-        --entitlements "$repo_dir/packaging/audio-input.entitlements" "$bundle" 2>/dev/null
+        --entitlements "$repo_dir/packaging/app.entitlements" "$bundle" 2>/dev/null
 }
 
 dev_app_running() { pgrep -f "$bundle/Contents/MacOS/Knob" >/dev/null; }
