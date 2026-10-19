@@ -23,20 +23,25 @@ struct ScreenSection: View {
                 }
                 .frame(height: 176)
                 .disabled(model.connection != .online)
-                if model.connection == .offline { offlineNote }
+                if let notice = model.notice {
+                    statusNote(notice, attention: !model.starting)
+                } else if model.connection == .offline {
+                    statusNote("Sound engine is off. Turn Knob on to start it.", attention: false)
+                }
             }
         }
         .environment(\.colorScheme, .dark)
     }
 
-    /// Shown under the controls (never instead of them) while the engine isn't running.
-    private var offlineNote: some View {
-        HStack(spacing: 6) {
-            Circle().fill(Screen.textTertiary).frame(width: 5, height: 5)
-            Text("Sound engine is off. Volume still works.")
+    /// Shown under the controls (never instead of them): engine status, or why it couldn't start.
+    private func statusNote(_ text: String, attention: Bool) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Circle().fill(attention ? Palette.accent : Screen.textTertiary).frame(width: 5, height: 5)
+            Text(text)
                 .font(.system(size: 10, weight: .medium))
+                .fixedSize(horizontal: false, vertical: true)
         }
-        .foregroundStyle(Screen.textSecondary)
+        .foregroundStyle(attention ? Screen.text : Screen.textSecondary)
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)
     }

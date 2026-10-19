@@ -28,7 +28,8 @@ struct KnobApp: App {
     init() {
         let demo = CommandLine.arguments.contains("--demo")
         let model = KnobModel(engine: demo ? DemoEngine() : SocketEngine(),
-                              volume: demo ? DemoVolume() : SystemVolume())
+                              volume: demo ? DemoVolume() : SystemVolume(),
+                              launcher: demo ? nil : EngineLauncher())
         _model = StateObject(wrappedValue: model)
         model.start()
         DispatchQueue.main.async { DevWindow.showIfRequested(model: model) }

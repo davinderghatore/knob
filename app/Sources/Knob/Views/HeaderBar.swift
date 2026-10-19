@@ -16,11 +16,11 @@ struct HeaderBar: View {
                 .accessibilityAddTraits(.isHeader)
             Spacer()
             PowerSwitch(isOn: Binding(get: { model.powerOn }, set: { model.setPower($0) }), label: "Sound effects")
-                .disabled(model.connection != .online)
+                .disabled(model.starting)
             Menu {
                 Button("About Knob", action: showAbout)
                 Divider()
-                Button("Quit Knob") { NSApp.terminate(nil) }.keyboardShortcut("q")
+                Button("Quit Knob") { model.quit() }.keyboardShortcut("q")
             } label: {
                 Image(systemName: "ellipsis")
                     .font(.system(size: 11, weight: .bold))

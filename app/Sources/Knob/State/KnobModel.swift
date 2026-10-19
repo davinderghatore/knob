@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import SwiftUI
 
@@ -22,18 +23,24 @@ final class KnobModel: ObservableObject {
     @Published private(set) var spectrum: [Double] = Array(repeating: 0, count: 10)
     @Published private(set) var peakLeft = 0.0
     @Published private(set) var peakRight = 0.0
+    /// A plain-language message for the panel, such as why the engine couldn't start.
+    @Published private(set) var notice: String?
+    @Published private(set) var starting = false
 
     private let engine: SoundEngine
     private let volumeControl: VolumeControl
+    /// Starts the real engine; nil for the demo engine, which is always running.
+    private let launcher: EngineLauncher?
     private var liveTask: Task<Void, Never>?
     private var pending: [String: Double] = [:]
     private var flushTask: Task<Void, Never>?
     private var editing = 0
     private var spectrumPeak = 0.05
 
-    init(engine: SoundEngine, volume: VolumeControl) {
+    init(engine: SoundEngine, volume: VolumeControl, launcher: EngineLauncher? = nil) {
         self.engine = engine
         self.volumeControl = volume
+        self.launcher = launcher
     }
 
     func start() {
@@ -118,9 +125,64 @@ final class KnobModel: ObservableObject {
 
     func toggleMute() { volumeControl.setMuted(!muted) }
 
+    /// ON starts the engine if it isn't running; OFF stops the engine Knob started (giving the
+    /// Mac its normal output back), or just bypasses effects on an engine Knob didn't start.
     func setPower(_ on: Bool) {
+        guard !starting else { return }
+        if on, connection != .online {
+            Task { await startEngine() }
+            return
+        }
+        if !on, let launcher, launcher.isRunning {
+            Task { await stopEngine() }
+            return
+        }
         powerOn = on
+        notice = nil
         Task { _ = try? await engine.send("setBypass", ["value": !on]) }
+    }
+
+    private func startEngine() async {
+        guard let launcher else { return }
+        starting = true
+        notice = "Starting the sound engine..."
+        defer { starting = false }
+        do {
+            try await launcher.start(preset: currentPreset?.url)
+        } catch {
+            notice = error.localizedDescription
+            return
+        }
+        for _ in 0..<50 where connection != .online {
+            try? await Task.sleep(for: .milliseconds(200))
+            await refresh()
+        }
+        guard connection == .online else {
+            launcher.stop()
+            notice = EngineLauncher.Problem.launchFailed.errorDescription
+            return
+        }
+        _ = try? await engine.send("setBypass", ["value": false])
+        powerOn = true
+        notice = nil
+    }
+
+    /// Hands the Mac its normal output back, then stops the engine.
+    func stopEngine() async {
+        guard let launcher, launcher.isRunning else { return }
+        _ = try? await engine.send("activateRouting", ["value": false])
+        _ = try? await engine.send("shutdown", [:])
+        launcher.stop()
+        powerOn = false
+        connection = .offline
+        notice = nil
+    }
+
+    func quit() {
+        Task {
+            await stopEngine()
+            NSApp.terminate(nil)
+        }
     }
 
     func setEffect(_ slot: EffectSlot, _ value: Double) {
