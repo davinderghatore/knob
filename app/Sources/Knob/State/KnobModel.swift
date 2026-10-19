@@ -65,7 +65,7 @@ final class KnobModel: ObservableObject {
             if !knobIsOutput { VolumeHandoff.giveBack() }
             HardwareDevices.observeDefaultOutput { [weak self] in self?.defaultOutputChanged() }
         }
-        presets = Preset.factory()
+        presets = Preset.all()
         if let path = UserDefaults.standard.string(forKey: PersistKey.lastPreset.rawValue) {
             currentPreset = presets.first { $0.url.path == path }
         }
@@ -157,13 +157,21 @@ final class KnobModel: ObservableObject {
     func toggleMute() { volumeControl.setMuted(!muted) }
 
     /// ON starts the engine if needed, turns effects on, and makes Knob the Mac's output.
-    /// OFF only bypasses the effects: the engine keeps running and stays the output, so every
-    /// setting stays where it was and the volume keys keep working.
+    /// OFF fully stops the engine Knob started: the speakers are handed back, and macOS stops
+    /// showing audio input in use (the orange dot), because nothing reads Knob's device any
+    /// more. Every setting is saved first and comes back on the next ON. (An engine Knob didn't
+    /// start, and the demo engine, are only bypassed.)
     func setPower(_ on: Bool) {
         guard !starting else { return }
         wantsOn = on
         if on, connection != .online {
             Task { await startEngine() }
+            return
+        }
+        if !on, launcher != nil, connection == .online {
+            powerOn = false
+            notice = nil
+            Task { await stopEngine() }
             return
         }
         powerOn = on
@@ -353,6 +361,27 @@ final class KnobModel: ObservableObject {
     }
 
     func editingChanged(_ active: Bool) { editing = max(0, editing + (active ? 1 : -1)) }
+
+    /// Saves the current sound as a new preset called `name`, adds it to the list and selects it.
+    /// Returns false (with a notice) if it couldn't be saved.
+    @discardableResult
+    func savePreset(named name: String) async -> Bool {
+        guard connection == .online, let url = Preset.newUserFile(named: name) else {
+            notice = connection == .online ? "Give the preset a name." : "Turn Knob on to save a preset."
+            return false
+        }
+        guard await succeeds("savePreset", ["path": url.path]) else {
+            notice = "The preset couldn't be saved. Try again."
+            return false
+        }
+        presets = Preset.all()
+        if let saved = presets.first(where: { $0.url.standardizedFileURL == url.standardizedFileURL }) {
+            currentPreset = saved
+            UserDefaults.standard.set(saved.url.path, forKey: PersistKey.lastPreset.rawValue)
+        }
+        notice = nil
+        return true
+    }
 
     func select(_ preset: Preset) {
         currentPreset = preset

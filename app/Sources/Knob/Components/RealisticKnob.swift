@@ -2,8 +2,9 @@ import AppKit
 import SwiftUI
 
 /// A hardware-style rotary knob: recessed well, shadowed skirt, lit cap, pointer and a glowing
-/// value arc. Drag up/down (or sideways) to turn it. Double-click resets to `defaultValue`.
-/// Outside changes (for example the Mac volume keys) glide in with a spring; drags follow 1:1.
+/// value arc. Turn it by circling the pointer around it, like a real knob (see `RotaryDrag`).
+/// Double-click resets to `defaultValue`. Outside changes (for example the Mac volume keys)
+/// glide in with a spring; drags follow the pointer exactly.
 struct RealisticKnob: View {
     @Binding var value: Double
     var size: CGFloat
@@ -16,8 +17,17 @@ struct RealisticKnob: View {
     @Environment(\.colorScheme) private var scheme
     @Environment(\.isEnabled) private var isEnabled
     @State private var dragStart: Double?
+    @State private var rotary: RotaryDrag?
 
     private static let sweep = 270.0
+
+    /// Diameters of the well, skirt and cap as fractions of `size`. Small knobs (the effects)
+    /// sit tighter inside their arc than the big volume knob, so the ring never looks oversized.
+    private var proportions: (well: CGFloat, skirt: CGFloat, cap: CGFloat) {
+        let t = min(max((size - 54) / (150 - 54), 0), 1)   // 0 at effect-knob size, 1 at volume size
+        func mix(_ small: CGFloat, _ large: CGFloat) -> CGFloat { small + (large - small) * t }
+        return (mix(0.92, 0.86), mix(0.84, 0.77), mix(0.73, 0.66))
+    }
 
     var body: some View {
         let p = Palette.of(scheme)
@@ -62,7 +72,7 @@ struct RealisticKnob: View {
 
     private func arc(_ p: Palette, _ v: Double) -> some View {
         let fraction = Self.sweep / 360
-        let width = max(2, size * 0.028)
+        let width = max(2.5, size * 0.028)
         return ZStack {
             Circle().trim(from: 0, to: fraction)
                 .stroke(p.faint.opacity(0.35), style: StrokeStyle(lineWidth: width, lineCap: .round))
@@ -78,11 +88,11 @@ struct RealisticKnob: View {
         Circle()
             .fill(LinearGradient(colors: [p.knobWellTop, p.knobWellBottom], startPoint: .top, endPoint: .bottom))
             .overlay(Circle().stroke(Color.black.opacity(0.35), lineWidth: 1).blur(radius: 1).clipShape(Circle()))
-            .frame(width: size * 0.86, height: size * 0.86)
+            .frame(width: size * proportions.well, height: size * proportions.well)
     }
 
     private func skirt(_ p: Palette) -> some View {
-        let d: CGFloat = size * 0.77
+        let d: CGFloat = size * proportions.skirt
         let outline: CGFloat = max(1, size * 0.012)
         let body = LinearGradient(colors: [p.knobBodyTop, p.knobBodyBottom],
                                   startPoint: .topLeading, endPoint: .bottomTrailing)
@@ -97,7 +107,7 @@ struct RealisticKnob: View {
     }
 
     private func cap(_ p: Palette) -> some View {
-        let d = size * 0.66
+        let d = size * proportions.cap
         return ZStack {
             Circle().fill(RadialGradient(colors: [p.knobCapTop, p.knobCapBottom],
                                          center: UnitPoint(x: 0.35, y: 0.28),
@@ -118,12 +128,18 @@ struct RealisticKnob: View {
     }
 
     private func pointer(_ p: Palette, _ v: Double) -> some View {
-        Capsule()
+        let capDiameter: CGFloat = size * proportions.cap
+        let width: CGFloat = max(2, size * 0.032)
+        let length: CGFloat = capDiameter * 0.2
+        let lift: CGFloat = capDiameter * 0.325
+        let glow: Color = scheme == .dark ? Color.white.opacity(0.35) : .clear
+        let degrees: Double = -Self.sweep / 2 + Self.sweep * v
+        return Capsule()
             .fill(p.knobIndicator)
-            .frame(width: max(2, size * 0.032), height: size * 0.13)
-            .shadow(color: scheme == .dark ? Color.white.opacity(0.35) : .clear, radius: 2)
-            .offset(y: -size * 0.215)
-            .rotationEffect(.degrees(-Self.sweep / 2 + Self.sweep * v))
+            .frame(width: width, height: length)
+            .shadow(color: glow, radius: 2)
+            .offset(y: -lift)
+            .rotationEffect(.degrees(degrees))
     }
 
     // MARK: Interaction
@@ -131,11 +147,18 @@ struct RealisticKnob: View {
     private var drag: some Gesture {
         DragGesture(minimumDistance: 0)
             .onChanged { g in
-                if dragStart == nil { dragStart = value; onEditingChanged(true) }
-                let travel = (-g.translation.height + g.translation.width * 0.6) / max(160, size * 1.8)
-                set((dragStart ?? value) + travel, animated: false)
+                if dragStart == nil {
+                    dragStart = value
+                    rotary = RotaryDrag(sweep: Self.sweep, size: size, value: value)
+                    onEditingChanged(true)
+                }
+                if let next = rotary?.move(to: g.location) { set(next, animated: false) }
             }
-            .onEnded { _ in dragStart = nil; onEditingChanged(false) }
+            .onEnded { _ in
+                dragStart = nil
+                rotary = nil
+                onEditingChanged(false)
+            }
     }
 
     private func set(_ newValue: Double, animated: Bool) {

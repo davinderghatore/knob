@@ -63,8 +63,8 @@ cat > "$bundle/Contents/Info.plist" <<PLIST
 <key>LSMinimumSystemVersion</key><string>14.0</string>
 <key>LSUIElement</key><true/>
 <key>NSHumanReadableCopyright</key><string>Free software under the GNU AGPL v3.</string>
-<key>NSMicrophoneUsageDescription</key><string>Knob processes the sound from your apps and plays it on your speakers or display.</string>
-<key>NSAudioCaptureUsageDescription</key><string>Knob processes the sound from your apps and plays it on your speakers or display.</string>
+<key>NSMicrophoneUsageDescription</key><string>Knob reads the sound your apps play through Knob's own audio device, so it can add effects. It never listens to your microphone.</string>
+<key>NSAudioCaptureUsageDescription</key><string>Knob reads the sound your apps play through Knob's own audio device, so it can add effects. It never listens to your microphone.</string>
 <key>SUFeedURL</key><string>$feed_url</string>
 <key>SUPublicEDKey</key><string>$(cat "$repo_dir/packaging/update-public-key.txt")</string>
 <key>SUEnableAutomaticChecks</key><true/>

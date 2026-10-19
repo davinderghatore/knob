@@ -91,7 +91,9 @@ apps ──▶ Knob.driver (driver/)              default output; owns the volum
 
 - Engine commands (`engine/command-dispatcher.mm`): `getDevices`, `getState`, `getMeters`, `setBypass`, `setOutputUID`, `activateRouting`, `setPreset`, `savePreset`, `setParam`, `setParams`, `setNumEqBands`, `shutdown`. Read the dispatcher and the tests for exact request/response shapes; don't guess the protocol.
 - Knob must never leave `Knob_Virtual` as the default output with no engine running.
-- **Power switch lifecycle** (`State/KnobModel.swift`, `Engine/EngineLauncher.swift`): ON with no engine checks the helpers, that `Knob_Virtual` is installed, picks a physical output, asks for audio access, runs `Helpers/knob-supervisor --engine ... --output UID --activate --preset SESSION`, waits for the socket, then un-bypasses. ON with a running engine un-bypasses and, if Knob isn't the output, follows the output picked in the Sound menu and re-activates routing (with retries; the engine refuses until audio flows). **OFF only bypasses**: the engine keeps running and stays the output, so settings never reset. Quit saves the session, deactivates routing, shuts the engine down and SIGTERMs the supervisor. The switch shows ON only when effects are on AND Knob is the output. Every failure becomes a plain sentence in `model.notice`.
+- **Power switch lifecycle** (`State/KnobModel.swift`, `Engine/EngineLauncher.swift`): ON with no engine checks the helpers, that `Knob_Virtual` is installed, picks a physical output, asks for audio access, runs `Helpers/knob-supervisor --engine ... --output UID --activate --preset SESSION`, waits for the socket, then un-bypasses. ON with a running engine un-bypasses and, if Knob isn't the output, follows the output picked in the Sound menu and re-activates routing (with retries; the engine refuses until audio flows). **OFF fully stops the engine** (saves the session, hands back the output and volume, shuts down), so macOS stops showing audio input in use; ON restores everything from the session. The user chose this over keeping volume keys working while OFF, because any read of Knob's device shows the orange microphone dot. Quit saves the session, deactivates routing, shuts the engine down and SIGTERMs the supervisor. The switch shows ON only when effects are on AND Knob is the output. Every failure becomes a plain sentence in `model.notice`.
+- **Engine log**: the supervisor and engine write to `~/Library/Logs/Knob/engine.log` (`Knob (dev)` for the dev copy), rotated at 1 MB. Read it first when the engine stops unexpectedly.
+- **User presets**: saved through the engine's `savePreset` into `~/Library/Application Support/<bundle id>/Presets/`, listed after the factory presets; a taken name gets " 2", never overwritten.
 - **Session**: `~/Library/Application Support/<bundle id>/session.fac` (dev and installed copies stay apart), saved through the engine's `savePreset` about 1s after the last change and on quit, loaded with `--preset` on the next start.
 - **Volume handoff** (`Engine/VolumeHandoff.swift`): taking over gives Knob's device the physical output's volume and raises the physical output to 100% underneath; outputs without volume (HDMI) get the last remembered level. Handing back (quit, or the user picking another output) gives the physical output Knob's level. The raised device is persisted (`PersistKey.raisedOutputUID`) and given back on the next launch, so speakers are never left at 100%. While ON, a default-output change made elsewhere is followed and Knob takes the output back.
 - `app/build-app.sh` embeds `build/knob-engine` and `build/knob-supervisor` when CMake has built them, and signs the app and helpers with `packaging/audio-input.entitlements`.
@@ -101,7 +103,7 @@ apps ──▶ Knob.driver (driver/)              default output; owns the volum
 
 ### Risk profile
 1. **Driver** (`driver/`): affects system audio for every app. Treat changes with extra scrutiny and flag them clearly for human review.
-2. **DSP** (`dsp/`) and **engine callbacks** (`AudioBridge::capture/render`): real-time code. No allocations, locks, logging, file/socket I/O or blocking calls on the audio thread. Watch numerical correctness. Any `dsp/` change must pass the bit-identical render check in `docs/testing.md` unless it is meant to change the sound.
+2. **DSP** (`dsp/`) and **engine callbacks** (`AudioBridge::capture/render`): real-time code. No allocations, locks, logging, file/socket I/O or blocking calls on the audio thread. Watch numerical correctness. Any `dsp/` change must pass the bit-identical render check in `docs/testing.md` unless it is meant to change the sound. Known latent issue: `spectrumProcess.cpp` indexes `band_values` (10 entries) with buffer-sized indexes in its processing-off branch; it is unreachable while the spectrum delay is 0 (`KnobDspPrivate.cpp` passes `0` for `l_host_buffer_delay_msecs`, verified under UBSan). Fix it (write `band_buf`) before ever adding a spectrum delay.
 3. **Knob app**: normal app code. Bugs are usually cosmetic, UX or state sync.
 
 ## Bug-Fix Rule: Reproduce Before Patching
@@ -195,7 +197,8 @@ If the same UI pattern is needed in 2+ places, extract it into `Components/`; ne
 
 | Component | What it is |
 |---|---|
-| `RealisticKnob` | Hardware rotary knob: well, skirt, lit cap, pointer, glowing arc, MIN/MAX. Drag, double-click reset, VoiceOver adjustable, trackpad tick at the ends |
+| `RealisticKnob` | Hardware rotary knob: well, skirt, lit cap, pointer, glowing arc, MIN/MAX. Turned by circling the pointer around it (`RotaryDrag`), double-click reset, VoiceOver adjustable, trackpad tick at the ends. Proportions tighten for small knobs |
+| `RotaryDrag` | Pure maths for turning a knob by angle (no SwiftUI), so it can be tested on its own |
 | `HardwareFader` | Vertical fader for the dark screen, -1...1 with centre detent |
 | `SegmentedTabs` | **21st.dev Segmented Control** (halaska-studio, MIT) port: sliding thumb, arrow keys |
 | `PowerSwitch` | **21st.dev Switch** (serafimcloud) port: pill thumb, sliding gradient track, 250/125ms timing |
@@ -250,3 +253,7 @@ Brief, dated record of what was worked on per day, in the `Knob: <summary>` form
 - Knob: first public release, 0.1.9, on GitHub; every push to main now publishes a release and installed copies update themselves (signed updates, tampered ones refused)
 - Knob: the standard installer (Knob-Install.pkg) is the supported install again, since dragging the app in never installed the driver; Homebrew install added; Knob now runs on Intel Macs too
 - Knob: README "How it works" redrawn as an illustrated, animated diagram
+- Knob: knobs turn by circling the pointer around them, like real knobs; the small effect knobs sit tighter in their ring
+- Knob: OFF now fully stops Knob, so the orange microphone dot goes away; settings come back on ON; the permission prompt explains Knob never uses the microphone
+- Knob: save your own presets from the preset strip
+- Knob: the sound engine writes its errors to a log, so unexpected stops can be explained
