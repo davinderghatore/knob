@@ -44,17 +44,50 @@ struct HeaderBar: View {
 
 }
 
-/// Preset picker with previous/next buttons, like the preset strip on studio gear.
+/// Preset picker with previous/next buttons, like the preset strip on studio gear, plus a save
+/// button that turns the strip into a name field.
 struct PresetBar: View {
     @ObservedObject var model: KnobModel
+    @State private var naming = false
+    @State private var name = ""
+    @FocusState private var nameFocused: Bool
+    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         HStack(spacing: 6) {
-            PillMenu(items: model.presets, selection: model.currentPreset, title: { $0.name },
-                     placeholder: "Choose a preset") { model.select($0) }
-            HardwareIconButton(systemImage: "chevron.left", label: "Previous preset") { model.stepPreset(-1) }
-            HardwareIconButton(systemImage: "chevron.right", label: "Next preset") { model.stepPreset(1) }
+            if naming {
+                TextField("Name your preset", text: $name)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(Palette.of(scheme).label)
+                    .padding(.horizontal, 10)
+                    .frame(height: 24)
+                    .background(RecessedPill())
+                    .focused($nameFocused)
+                    .onSubmit(save)
+                    .onExitCommand { naming = false }
+                HardwareIconButton(systemImage: "checkmark", label: "Save preset", action: save)
+                    .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
+                HardwareIconButton(systemImage: "xmark", label: "Cancel") { naming = false }
+            } else {
+                PillMenu(items: model.presets, selection: model.currentPreset, title: { $0.name },
+                         placeholder: "Choose a preset") { model.select($0) }
+                HardwareIconButton(systemImage: "chevron.left", label: "Previous preset") { model.stepPreset(-1) }
+                HardwareIconButton(systemImage: "chevron.right", label: "Next preset") { model.stepPreset(1) }
+                HardwareIconButton(systemImage: "square.and.arrow.down", label: "Save as a new preset") {
+                    name = ""
+                    naming = true
+                    nameFocused = true
+                }
+            }
         }
         .disabled(model.connection != .online)
+    }
+
+    private func save() {
+        let chosen = name
+        Task {
+            if await model.savePreset(named: chosen) { naming = false }
+        }
     }
 }

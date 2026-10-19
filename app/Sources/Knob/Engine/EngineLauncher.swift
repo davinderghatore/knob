@@ -49,6 +49,11 @@ final class EngineLauncher {
         let process = Process()
         process.executableURL = supervisorURL
         process.arguments = arguments
+        // The supervisor and the engine it runs write their errors here (the engine inherits it).
+        if let log = EngineLog.open(note: "Starting the sound engine for output \(output.uid)") {
+            process.standardOutput = log
+            process.standardError = log
+        }
         do { try process.run() } catch { throw Problem.launchFailed }
         supervisor = process
     }
@@ -68,5 +73,35 @@ final class EngineLauncher {
         case .notDetermined: return await AVCaptureDevice.requestAccess(for: .audio)
         default: return false
         }
+    }
+}
+
+/// ~/Library/Logs/Knob/engine.log: everything the engine and supervisor print, so a stop or
+/// crash can be explained afterwards. Also visible in the Console app under Log Reports.
+/// Kept under 1 MB: the previous log moves to engine.old.log.
+enum EngineLog {
+    static var url: URL? {
+        guard let logs = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask).first else { return nil }
+        let isDev = Bundle.main.bundleIdentifier?.hasSuffix(".dev") == true
+        return logs.appendingPathComponent("Logs/\(isDev ? "Knob (dev)" : "Knob")/engine.log")
+    }
+
+    static func open(note: String) -> FileHandle? {
+        guard let url else { return nil }
+        let files = FileManager.default
+        try? files.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        if let size = (try? files.attributesOfItem(atPath: url.path))?[.size] as? Int, size > 1 << 20 {
+            let old = url.deletingLastPathComponent().appendingPathComponent("engine.old.log")
+            try? files.removeItem(at: old)
+            try? files.moveItem(at: url, to: old)
+        }
+        if !files.fileExists(atPath: url.path) { files.createFile(atPath: url.path, contents: nil) }
+        guard let handle = try? FileHandle(forWritingTo: url) else { return nil }
+        handle.seekToEndOfFile()
+        let stamp = DateFormatter()
+        stamp.dateFormat = "MMM d, h:mm:ss a"   // 12-hour with AM/PM, as everywhere in Knob
+        let line = "\n=== \(stamp.string(from: Date())): \(note) ===\n"
+        handle.write(Data(line.utf8))
+        return handle
     }
 }
