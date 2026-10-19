@@ -26,6 +26,8 @@ final class KnobModel: ObservableObject {
     /// A plain-language message for the panel, such as why the engine couldn't start.
     @Published private(set) var notice: String?
     @Published private(set) var starting = false
+    /// True when ON failed only because the audio device isn't installed and the app can install it.
+    @Published private(set) var canInstallDevice = false
     /// True when the Mac's sound actually goes through Knob (Knob is the default output).
     @Published private(set) var routingActive = false
 
@@ -98,9 +100,21 @@ final class KnobModel: ObservableObject {
             outputs = OutputDevice.list(json: try await engine.send("getDevices", [:]))
             apply(EngineState(json: try await engine.send("getState", [:])), includeControls: true)
             connection = .online
+            await keepTenBands()
         } catch {
             connection = .offline
         }
+    }
+
+    /// Knob's equalizer has 10 bands. An engine started without a preset comes up with its
+    /// built-in 31, which can't fit the panel, so switch it to 10 whenever that happens.
+    static let eqBands = 10
+
+    private func keepTenBands() async {
+        guard !eq.isEmpty, eq.count != Self.eqBands else { return }
+        guard await succeeds("setNumEqBands", ["count": Self.eqBands]) else { return }
+        await refreshState(includeControls: true)
+        scheduleSessionSave()
     }
 
     private func poll() async {
@@ -174,6 +188,12 @@ final class KnobModel: ObservableObject {
         let session = Self.sessionURL.flatMap { FileManager.default.fileExists(atPath: $0.path) ? $0 : nil }
         do {
             try await launcher.start(preset: session ?? currentPreset?.url)
+            canInstallDevice = false
+        } catch EngineLauncher.Problem.deviceMissing where DriverInstaller.bundledDriver != nil {
+            canInstallDevice = true
+            notice = "Knob needs to install its audio device first."
+            wantsOn = false
+            return
         } catch {
             notice = error.localizedDescription
             wantsOn = false
@@ -195,6 +215,26 @@ final class KnobModel: ObservableObject {
             await refreshState(includeControls: true)
         }
         if routingActive { VolumeHandoff.takeOver(from: physical) } else { await takeOverOutput(followingSystem: false) }
+    }
+
+    /// Installs the audio device bundled in the app (one password prompt), then switches Knob on.
+    func installAudioDevice() {
+        guard !starting else { return }
+        Task {
+            starting = true
+            notice = "Installing Knob's audio device..."
+            do {
+                try await DriverInstaller.install()
+            } catch {
+                starting = false
+                notice = error.localizedDescription
+                return
+            }
+            starting = false
+            canInstallDevice = false
+            wantsOn = true
+            await startEngine()
+        }
     }
 
     /// Makes Knob the Mac's output (playing through the output the user picked last), carrying

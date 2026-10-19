@@ -43,6 +43,17 @@ if [ -x "$repo_dir/build/knob-engine" ] && [ -x "$repo_dir/build/knob-supervisor
 else
     echo "Note: engine helpers not built yet (cmake --build build); the power switch can't start the engine." >&2
 fi
+# The audio device rides inside the app, which installs it on first use (one password prompt).
+if [ -d "$repo_dir/build/driver/Knob.driver" ]; then
+    ditto "$repo_dir/build/driver/Knob.driver" "$bundle/Contents/Resources/Knob.driver"
+else
+    echo "Note: audio device not built yet (bash driver/build.sh build/driver); Knob can't install it." >&2
+fi
+# Release builds carry their complete source code (AGPL-3.0), as the About window says.
+if [ "$config" = release ] && git -C "$repo_dir" rev-parse --git-dir >/dev/null 2>&1; then
+    python3 -I "$repo_dir/packaging/source-bundle.py" "$bundle/Contents/Resources" >/dev/null
+    rm -f "$bundle/Contents/Resources/SOURCE_SHA256SUMS"
+fi
 codesign --force --sign - --options runtime --timestamp=none --entitlements "$entitlements" "$bundle"
 codesign --verify --strict "$bundle"
 echo "Built $bundle"

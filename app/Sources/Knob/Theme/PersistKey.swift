@@ -3,6 +3,8 @@
 enum PersistKey: String {
     case selectedTab = "knob.ui.selectedTab"
     case lastPreset = "knob.ui.lastPreset"
+    /// Show Knob in the Dock and the ⌘-Tab switcher (default true).
+    case showInDock = "knob.ui.showInDock"
     /// Knob's volume while it was the output, for outputs without their own volume (HDMI).
     case lastVolume = "knob.audio.lastVolume"
     /// The physical output Knob raised to 100% underneath itself, until it is given back.

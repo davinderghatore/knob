@@ -57,13 +57,14 @@ enum Snapshot {
         app.run()
     }
 
-    /// `Knob --icons DIR`: the app icon at 1024px, plus the About window in light and dark.
+    /// `Knob --icons DIR`: the app icon at 1024px, the installer background, and the About window in light and dark.
     static func renderArtwork(into folder: URL) {
         let app = NSApplication.shared
         app.setActivationPolicy(.prohibited)
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         Task { @MainActor in
             render(AppIconView(size: 1024), scheme: .dark, to: folder.appendingPathComponent("icon-1024.png"))
+            render(InstallerBackgroundView(), scheme: .light, to: folder.appendingPathComponent("installer-background.png"))
             for (name, scheme) in [("light", ColorScheme.light), ("dark", ColorScheme.dark)] {
                 render(AboutView().environment(\.colorScheme, scheme), scheme: scheme,
                        to: folder.appendingPathComponent("about-\(name).png"))

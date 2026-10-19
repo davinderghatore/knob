@@ -153,13 +153,18 @@ flowchart TB
 
 ## 🚀 Quick start
 
-**1. Install prerequisites**
+### 💿 Install from the disk image
 
-- macOS **14** or later
-- Apple Command Line Tools: `xcode-select --install`
-- CMake: `brew install cmake`
+1. Open **`Knob-0.1.0.dmg`** and drag **Knob** into **Applications**.
+2. Open Knob. It appears in your menu bar and the Dock.
+3. Flip the switch to **ON**. The first time, Knob shows an **Install** button for its audio device: click it and enter your Mac password once.
+4. When macOS asks for audio access, choose **Allow**. It is only used to process sound on your Mac; nothing is recorded or sent anywhere.
 
-**2. Build**
+<sub>Knob isn't notarized yet, so the first launch may need right-click → **Open**.</sub>
+
+### 🔨 Build it yourself
+
+**Prerequisites:** macOS **14** or later · Apple Command Line Tools (`xcode-select --install`) · CMake (`brew install cmake`) · dmgbuild for the installer (`uv tool install dmgbuild`)
 
 ```bash
 git clone git@github.com:simranxdhindsa/knob.git && cd knob
@@ -168,17 +173,9 @@ cmake -S . -B build -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_DEPLOYMENT_TARGET=14.0
 cmake --build build -j8                  # sound engine and supervisor
 bash driver/build.sh "$PWD/build/driver" # audio device
-app/build-app.sh                         # build/Knob.app
+app/build-app.sh                         # build/Knob.app, with the engine and audio device inside
+packaging/build-dmg.sh                   # dist/Knob-<version>.dmg
 ```
-
-**3. Install the audio device and run**
-
-```bash
-sudo cp -R build/driver/Knob.driver /Library/Audio/Plug-Ins/HAL/ && sudo killall coreaudiod
-open build/Knob.app
-```
-
-Click the knob in your menu bar and flip the switch to **ON**. The first time, macOS asks for audio access: choose **Allow**. It is only used to process sound on your Mac; nothing is recorded or sent anywhere.
 
 ---
 
@@ -190,8 +187,9 @@ Click the knob in your menu bar and flip the switch to **ON**. The first time, m
 | `npm run dev:demo` | 🧪 The same, on sample data: no engine or audio device needed |
 | `npm run dev:once` | ▶️ Build and launch once |
 | `app/build-app.sh` | 📦 Build `build/Knob.app` with the engine inside |
+| `packaging/build-dmg.sh` | 💿 Build the drag-to-Applications installer in `dist/` |
 | `Knob --snapshot DIR` | 📸 Render the panel in light and dark, engine on and off |
-| `Knob --icons DIR` | 🎨 Render the app icon and the About window |
+| `Knob --icons DIR` | 🎨 Render the app icon, the installer background and the About window |
 | `Knob --volume-check 3` | 🔊 Check the real Mac volume path, then restore it |
 
 `npm` is only a shortcut: there are no Node dependencies.

@@ -33,25 +33,3 @@ enum VolumeCheck {
         app.run()
     }
 }
-
-/// Dev mode only (`KNOB_DEV_OPEN_POPOVER=1`, set by scripts/dev.sh): reopens the menu bar panel
-/// right after a relaunch so changes are visible without clicking. SwiftUI has no API for this,
-/// so it clicks Knob's own status bar button.
-@MainActor
-enum DevPopover {
-    static func open() {
-        let button = NSApp.windows
-            .filter { $0.className.contains("StatusBarWindow") }
-            .compactMap { $0.contentView.flatMap(findButton) }
-            .first
-        guard let button else { NSLog("dev: menu bar button not found"); return }
-        button.performClick(nil)
-        NSLog("dev: opened the Knob panel")
-    }
-
-    private static func findButton(in view: NSView) -> NSStatusBarButton? {
-        if let button = view as? NSStatusBarButton { return button }
-        for subview in view.subviews { if let found = findButton(in: subview) { return found } }
-        return nil
-    }
-}

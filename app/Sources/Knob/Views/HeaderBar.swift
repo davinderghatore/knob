@@ -4,6 +4,7 @@ import SwiftUI
 /// Wordmark, the power switch and the app menu.
 struct HeaderBar: View {
     @ObservedObject var model: KnobModel
+    @AppStorage(PersistKey.showInDock.rawValue) private var showInDock = true
     @Environment(\.colorScheme) private var scheme
 
     var body: some View {
@@ -19,6 +20,7 @@ struct HeaderBar: View {
                 .disabled(model.starting)
             Menu {
                 Button("About Knob") { AboutWindow.show() }
+                Toggle("Show in Dock", isOn: $showInDock)
                 Divider()
                 Button("Quit Knob") { model.quit() }.keyboardShortcut("q")
             } label: {
@@ -33,6 +35,7 @@ struct HeaderBar: View {
             .buttonStyle(.plain)
             .menuIndicator(.hidden)
             .accessibilityLabel("Knob menu")
+            .onChange(of: showInDock) { _, shown in DockPresence.apply(shown) }
         }
     }
 

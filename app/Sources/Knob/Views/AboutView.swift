@@ -50,7 +50,7 @@ struct AboutView: View {
 
             VStack(spacing: 4) {
                 Text("Free software under the GNU Affero General Public License v3.")
-                Text("It comes with no warranty. The complete source code is included with the installer.")
+                Text("It comes with no warranty. The complete source code is included inside the app.")
             }
             .font(.system(size: 9.5))
             .foregroundStyle(p.muted)

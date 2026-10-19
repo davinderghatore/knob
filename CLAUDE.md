@@ -31,7 +31,8 @@ app/build-app.sh [debug|release]                          # build/Knob.app (pres
 build/Knob.app/Contents/MacOS/Knob --demo                 # sample engine + sample volume
 build/Knob.app/Contents/MacOS/Knob --snapshot DIR         # PNGs: light/dark x effects/equalizer, engine on (panel-*) and off (offline-*)
 build/Knob.app/Contents/MacOS/Knob --volume-check 3       # real Mac volume: listen, set, restore
-build/Knob.app/Contents/MacOS/Knob --icons DIR            # app icon (1024px) + About window, light/dark
+build/Knob.app/Contents/MacOS/Knob --icons DIR            # app icon (1024px), installer background, About window
+packaging/build-dmg.sh                                    # dist/Knob-<version>.dmg (drag to Applications; needs dmgbuild)
 ```
 - Look at the `--snapshot` PNGs after every UI change: this terminal has no Screen Recording permission, so the live menu bar can't be captured.
 - The user often has `npm run dev` running (`build/dev/Knob.app`). Never `pkill -x Knob`: that also kills their dev copy. Stop only the exact bundle you launched.
@@ -87,6 +88,9 @@ apps ──▶ Knob.driver (driver/)              default output; owns the volum
 - **Session**: `~/Library/Application Support/<bundle id>/session.fac` (dev and installed copies stay apart), saved through the engine's `savePreset` about 1s after the last change and on quit, loaded with `--preset` on the next start.
 - **Volume handoff** (`Engine/VolumeHandoff.swift`): taking over gives Knob's device the physical output's volume and raises the physical output to 100% underneath; outputs without volume (HDMI) get the last remembered level. Handing back (quit, or the user picking another output) gives the physical output Knob's level. The raised device is persisted (`PersistKey.raisedOutputUID`) and given back on the next launch, so speakers are never left at 100%. While ON, a default-output change made elsewhere is followed and Knob takes the output back.
 - `app/build-app.sh` embeds `build/knob-engine` and `build/knob-supervisor` when CMake has built them, and signs the app and helpers with `packaging/audio-input.entitlements`.
+- **Installer**: `packaging/build-dmg.sh` makes a drag-to-Applications disk image. Its background is `Views/InstallerBackgroundView.swift` (light faceplate so Finder's black icon labels stay readable); icon positions in `packaging/dmg-settings.py` must match the slots drawn there. The app carries `Resources/Knob.driver` and installs it itself (`Engine/DriverInstaller.swift`, one admin prompt via osascript) when ON finds the device missing; release builds also carry `Resources/knob-source.tar.gz` (committed files only, so commit before a release build).
+- **Dock**: Knob shows in the Dock by default (`DockPresence`, "Show in Dock" in the ••• menu); clicking the Dock icon opens the panel; ⌘Q and Dock Quit stop the engine safely except in dev mode.
+- **EQ is 10 bands.** An engine started without a preset comes up with 31; `KnobModel.keepTenBands()` switches it back on connect. The bank scrolls sideways above 12 bands instead of stretching the panel.
 
 ### Risk profile
 1. **Driver** (`driver/`): affects system audio for every app. Treat changes with extra scrutiny and flag them clearly for human review.
@@ -233,3 +237,6 @@ Brief, dated record of what was worked on per day, in the `Knob: <summary>` form
 - Knob: the switch makes Knob the Mac's output, follows outputs picked in the Sound menu, and carries the volume over both ways (speakers never left at 100%)
 - Knob: installed Knob's own audio device on this Mac, replacing the old one
 - Knob: new app icon, redesigned About window with credits to Simran Dhindsa, and a README in Velocity's style with new banner artwork
+- Knob: shows in the Dock (optional), clicking the Dock icon opens the panel, quitting stops the engine safely
+- Knob: drag-to-Applications installer with a designed window; the app installs its own audio device with one password prompt
+- Knob: fixed the Equalizer overflowing with 31 bands; Knob keeps the engine at 10 bands and labels like 1.3K are exact

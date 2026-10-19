@@ -28,6 +28,7 @@ struct KnobLauncher {
 }
 
 struct KnobApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var model: KnobModel
 
     init() {
@@ -36,11 +37,12 @@ struct KnobApp: App {
                               volume: demo ? DemoVolume() : SystemVolume(),
                               launcher: demo ? nil : EngineLauncher())
         _model = StateObject(wrappedValue: model)
+        AppDelegate.model = model
         model.start()
         DispatchQueue.main.async { DevWindow.showIfRequested(model: model) }
         ProcessInfo.processInfo.disableAutomaticTermination("Knob lives in the menu bar")
         if ProcessInfo.processInfo.environment["KNOB_DEV_OPEN_POPOVER"] == "1" {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { DevPopover.open() }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { StatusItemPanel.open() }
         }
     }
 
@@ -52,5 +54,10 @@ struct KnobApp: App {
                 .accessibilityLabel("Knob")
         }
         .menuBarExtraStyle(.window)
+        .commands {
+            CommandGroup(replacing: .appInfo) {
+                Button("About Knob") { AboutWindow.show() }
+            }
+        }
     }
 }

@@ -24,7 +24,8 @@ struct ScreenSection: View {
                 .frame(height: 176)
                 .disabled(model.connection != .online)
                 if let notice = model.notice {
-                    statusNote(notice, attention: !model.starting)
+                    statusNote(notice, attention: !model.starting,
+                               showsInstall: model.canInstallDevice && !model.starting)
                 } else if model.connection == .offline {
                     statusNote("Sound engine is off. Turn Knob on to start it.", attention: false)
                 }
@@ -34,16 +35,30 @@ struct ScreenSection: View {
     }
 
     /// Shown under the controls (never instead of them): engine status, or why it couldn't start.
-    private func statusNote(_ text: String, attention: Bool) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 6) {
+    private func statusNote(_ text: String, attention: Bool, showsInstall: Bool = false) -> some View {
+        HStack(alignment: .center, spacing: 6) {
             Circle().fill(attention ? Palette.accent : Screen.textTertiary).frame(width: 5, height: 5)
             Text(text)
                 .font(.system(size: 10, weight: .medium))
                 .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 4)
+            if showsInstall {
+                Button { model.installAudioDevice() } label: {
+                    Text("INSTALL")
+                        .font(.system(size: 9.5, weight: .bold)).tracking(0.8)
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 10)
+                        .frame(height: 20)
+                        .background(Capsule().fill(Palette.accent))
+                        .shadow(color: Palette.accentGlow.opacity(0.6), radius: 5)
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+            }
         }
         .foregroundStyle(attention ? Screen.text : Screen.textSecondary)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .contain)
     }
 }
 
@@ -104,33 +119,46 @@ struct EqualizerBank: View {
         .disabled(true)
     }
 
-    private var bank: some View {
-        VStack(spacing: 8) {
-            HStack(spacing: 0) {
-                ForEach(model.eq.indices, id: \.self) { band in
-                    HardwareFader(value: Binding(get: { model.eq[band] }, set: { model.setEQ(band: band, $0) }),
-                                  height: faderHeight,
-                                  accessibilityLabel: "\(Self.label(model.frequencies[safe: band])) hertz",
-                                  accessibilityValue: String(format: "%+.1f dB", model.eq[band] * 12),
-                                  onEditingChanged: model.editingChanged)
-                        .frame(maxWidth: .infinity)
-                }
+    /// Up to 12 bands share the screen's width; more scroll sideways inside it, never
+    /// stretching the panel.
+    @ViewBuilder private var bank: some View {
+        if model.eq.count <= 12 {
+            HStack(spacing: 0) { columns(width: nil) }
+                .frame(maxHeight: .infinity, alignment: .bottom)
+        } else {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 0) { columns(width: 30) }
             }
-            HStack(spacing: 0) {
-                ForEach(model.eq.indices, id: \.self) { band in
-                    Text(Self.label(model.frequencies[safe: band]))
-                        .font(.system(size: 7.5, weight: .medium).monospacedDigit())
-                        .foregroundStyle(Screen.textTertiary)
-                        .frame(maxWidth: .infinity)
-                }
-            }
+            .frame(maxHeight: .infinity, alignment: .bottom)
         }
-        .frame(maxHeight: .infinity, alignment: .bottom)
     }
 
+    private func columns(width: CGFloat?) -> some View {
+        ForEach(model.eq.indices, id: \.self) { band in
+            VStack(spacing: 8) {
+                HardwareFader(value: Binding(get: { model.eq[band] }, set: { model.setEQ(band: band, $0) }),
+                              height: faderHeight,
+                              accessibilityLabel: "\(Self.label(model.frequencies[safe: band])) hertz",
+                              accessibilityValue: String(format: "%+.1f dB", model.eq[band] * 12),
+                              onEditingChanged: model.editingChanged)
+                Text(Self.label(model.frequencies[safe: band]))
+                    .font(.system(size: 7.5, weight: .medium).monospacedDigit())
+                    .foregroundStyle(Screen.textTertiary)
+                    .lineLimit(1)
+                    .fixedSize()
+            }
+            .frame(width: width)
+            .frame(maxWidth: width == nil ? .infinity : nil)
+        }
+    }
+
+    /// Short frequency label: 32, 125, 1K, 1.3K, 6.3K, 16K.
     static func label(_ hertz: Double?) -> String {
         guard let hertz else { return "" }
-        return hertz >= 1000 ? "\(Int((hertz / 1000).rounded()))K" : "\(Int(hertz.rounded()))"
+        guard hertz >= 1000 else { return "\(Int(hertz.rounded()))" }
+        let kilo = hertz / 1000
+        if kilo >= 10 || kilo == kilo.rounded() { return "\(Int(kilo.rounded()))K" }
+        return String(format: "%.1fK", kilo)
     }
 }
 
