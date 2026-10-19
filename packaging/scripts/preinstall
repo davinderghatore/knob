@@ -1,0 +1,14 @@
+#!/bin/sh
+set -eu
+if [ "${3:-/}" != / ]; then
+    echo 'Knob can only be installed on the startup disk.' >&2
+    exit 1
+fi
+for process in knob-engine knob-supervisor; do
+    if pgrep -f "(^|/)$process([[:space:]]|$)" >/dev/null; then
+        echo 'Quit Knob from its menu bar icon before installing.' >&2
+        exit 1
+    fi
+done
+script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+"$script_dir/audio-install-guard"

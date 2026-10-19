@@ -1,0 +1,11 @@
+{
+  "name": "knob",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "description": "Shortcuts for developing Knob. No Node dependencies: these just call the shell scripts.",
+  "scripts": {
+    "dev": "bash scripts/dev.sh",
+    "dev:demo": "bash scripts/dev.sh --demo",
+    "dev:once": "bash scripts/dev.sh --once"
+  }
+}

@@ -1,0 +1,122 @@
+/*
+FxSound
+Copyright (C) 2025  FxSound LLC
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program.  If not, see <http://www.gnu.org/licenses/>.
+*/
+
+/* knobpProcessClear.cpp */
+
+#include "codedefs.h"
+
+#ifndef PT_PORTABLE_DSP
+#include <windows.h>
+#endif
+#include <stdio.h>
+#include <time.h>
+#ifndef PT_PORTABLE_DSP
+#include <share.h>
+#endif
+
+#include "u_knobp.h" /* Must go before codedefs.h due to mmgr */
+
+#include "knobp.h"
+#include "mth.h"
+#include "realSample.h"
+#include "spectrum.h"
+#include "com.h"
+#include "KnobSdk.h"
+#include "File.h"
+
+extern "C" {
+#include "comSftwr.h"
+}
+
+/*
+ * FUNCTION: knobp_ClearBuffersIfSongStart() 
+ * DESCRIPTION:
+ *
+ *  If the song is starting we need to clear the buffers.  It would be best if
+ *  we could know the user hit "play" and then we would know to clear the buffers however since
+ *  we don't know when the user hit "play" we must assume it is the start of a new song if no
+ *  buffer has been processed for a certain period of time (like one second).
+ *
+ *  The data that is to be cleared is the slip buffer data and the reverberations.  Also the
+ *  BeatDsp buffers are cleared.
+ *
+ */
+int knobp_ClearBuffersIfSongStart(PT_HANDLE *hp_knobp)
+{
+	struct knobpHdlType *cast_handle;
+
+	cast_handle = (struct knobpHdlType *)(hp_knobp);
+
+	if (cast_handle == NULL)
+		return(OKAY);
+
+	int i_msecs_since_last_buffer_processed;
+
+
+	/* HACK */
+	i_msecs_since_last_buffer_processed = 0;
+
+/*
+	if (knobp_CalcMsecsSinceLastBufferProcessed(hp_knobp, &i_msecs_since_last_buffer_processed) != OKAY)
+		return(NOT_OKAY);
+*/
+
+	/* If it is the start of a new song, clear the previous buffered audio data */
+	if (i_msecs_since_last_buffer_processed >= KNOBP_MSECS_SINCE_LAST_BUFFER_TO_ASSUME_STOPPED)
+   {
+		/* Clear previously buffered audio */
+		if (knobpClearPreviousBufferedAudio(hp_knobp) != OKAY)
+			return(NOT_OKAY);
+
+		/* Clear the spectrum */
+		if (cast_handle->spectrum.spectrum_hdl != NULL)
+		{
+			if (spectrumReset(cast_handle->spectrum.spectrum_hdl) != OKAY)
+				return(NOT_OKAY);
+		}
+	}
+
+	return(OKAY);
+}
+
+/*
+ * FUNCTION: knobpClearPreviousBufferedAudio() 
+ * DESCRIPTION:
+ *   Clears all the data associated with previous audio data which has been processed and buffered.
+ *   This function is usually called at the start of a new song so that tails of the previous song
+ *   are not heard at the beginning of the next song.
+ */
+int knobpClearPreviousBufferedAudio(PT_HANDLE *hp_knobp)
+{
+	struct knobpHdlType *cast_handle;
+
+	cast_handle = (struct knobpHdlType *)(hp_knobp);
+
+	if (cast_handle == NULL)
+		return(OKAY);
+
+	/* 
+	 * Clear the KNOB buffered data (reverb tails) 
+	 * NOTE: For now we are calling BeginProcess() but we should call a simpler com function
+	 *       to clear the buffers.
+	 */
+	if (knobpBeginProcess(hp_knobp, cast_handle->bits_per_sample, cast_handle->num_channels_out, (int)cast_handle->sampling_freq) != OKAY)
+		return(NOT_OKAY);
+
+	return(OKAY);
+}

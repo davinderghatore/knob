@@ -1,0 +1,246 @@
+/*
+FxSound
+Copyright (C) 2025  FxSound LLC
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program.  If not, see <http://www.gnu.org/licenses/>.
+*/
+
+/* knobpProcess.cpp */
+
+#include "codedefs.h"
+
+#ifndef PT_PORTABLE_DSP
+#include <windows.h>
+#endif
+#include <stdio.h>
+#include <time.h>
+
+#include "u_knobp.h" 
+#include "knobp.h"
+#include "mth.h"
+#include "realSample.h"
+#include "spectrum.h"
+#include "com.h"
+#include "KnobSdk.h"
+
+extern "C" {
+#include "comSftwr.h"
+}
+
+/*
+ * FUNCTION: knobpBeginProcess() 
+ * DESCRIPTION:
+ *   Begin the processing of a signal.  This function is called
+ *   to inform the processing module that either the samp_freq, 
+ *   bit_per_sample, or num_channels has changed.
+ */
+int knobpBeginProcess(PT_HANDLE *hp_knobp, int i_bits_per_sample, int i_num_channels, int i_sample_rate)
+{
+	struct knobpHdlType *cast_handle;
+
+	cast_handle = (struct knobpHdlType *)(hp_knobp);
+
+	if (cast_handle == NULL)
+		return(OKAY);
+ 
+	realtype r_sample_rate;
+	int sampling_rate_changed;
+	int bits_per_sample_changed;
+	int num_channels_changed;
+   
+	if (!(cast_handle->fully_initialized))
+		return(NOT_OKAY);
+
+	if (cast_handle->trace.mode)
+	{
+		swprintf(cast_handle->wcp_msg1, L"knobpBeginProcess: Entered: bps = %d, nch = %d, samp_rate = %d",
+			     i_bits_per_sample, i_num_channels, i_sample_rate);
+	   (cast_handle->slout1)->Message_Wide(FIRST_LINE, cast_handle->wcp_msg1);
+   }
+
+	/* Convert the sampling frequency to a real */
+	r_sample_rate = (realtype)i_sample_rate;
+
+	/* Check if the sampling rate has changed */
+	if (r_sample_rate != cast_handle->sampling_freq)
+	   sampling_rate_changed = IS_TRUE;
+	else
+	   sampling_rate_changed = IS_FALSE;
+
+	/* Check if num channels changed */
+	if (i_num_channels != cast_handle->num_channels_in)
+		num_channels_changed = IS_TRUE;
+	else
+		num_channels_changed = IS_FALSE;
+
+	/* Check if bits per sample changed */
+	if (i_bits_per_sample != cast_handle->bits_per_sample)
+      bits_per_sample_changed = IS_TRUE;
+	else
+      bits_per_sample_changed = IS_FALSE;
+
+	/* Reset the stored signal info */
+	cast_handle->bits_per_sample = i_bits_per_sample;
+	cast_handle->valid_bits = i_bits_per_sample;
+   cast_handle->num_channels_in = i_num_channels;
+   cast_handle->num_channels_out = i_num_channels;
+	cast_handle->sampling_freq = r_sample_rate; //Actual sampling rate of the data
+	cast_handle->internal_sampling_freq = r_sample_rate; //Sampling rate used internally for processing
+	cast_handle->sampling_period = (realtype)1.0/(cast_handle->sampling_freq);
+	cast_handle->internal_sampling_period = cast_handle->sampling_period;
+	cast_handle->internal_rate_ratio = 1;
+
+	// If the actual signal sampling rate is greater than the max internal rate, the
+	// internal rates will be reduced.
+	if( r_sample_rate > (realtype)KNOBP_MAX_INTERNAL_SAMPLING_FREQ )
+	{
+		if(r_sample_rate < (realtype)KNOBP_MAX_SAMPLING_FREQ)
+		{
+			cast_handle->internal_sampling_freq = r_sample_rate/(realtype)2.0;
+			cast_handle->internal_sampling_period = (realtype)1.0/(cast_handle->internal_sampling_freq);
+			cast_handle->internal_rate_ratio = 2;
+		}
+		else // 192khz case
+		{
+			cast_handle->internal_sampling_freq = r_sample_rate/(realtype)4.0;
+			cast_handle->internal_sampling_period = (realtype)1.0/(cast_handle->internal_sampling_freq);
+			cast_handle->internal_rate_ratio = 4;
+		}
+	}
+
+	/* Check to see if this format is supported */
+	if( (r_sample_rate  > (realtype)KNOBP_MAX_SAMPLING_FREQ) ||
+		 (r_sample_rate  < (realtype)KNOBP_MIN_SAMPLING_FREQ) ||
+		 (i_num_channels > KNOBP_MAX_NUM_CHANNELS) ||
+		 (i_bits_per_sample > KNOBP_MAX_BITS_PER_SAMPLE) ||
+		 (i_bits_per_sample < KNOBP_MIN_BITS_PER_SAMPLE) )
+	{
+		/* Set unsupported flag and skip remainining initialization functions if format isn't supported */
+		cast_handle->unsupported_format_flag = IS_TRUE;
+		return(OKAY);
+	}
+	else
+		cast_handle->unsupported_format_flag = IS_FALSE;
+
+	/* Reinitialize the dynamic qnt handles */
+   if (knobp_InitDynamicQnts(hp_knobp) != OKAY)
+		return(NOT_OKAY);
+
+	/* Communicate to the DSP all the new settings */
+   if (knobp_ComLoadAndRun(hp_knobp) != OKAY)
+		return(NOT_OKAY);
+   if (knobpCommunicateAll(hp_knobp) != OKAY)
+		return(NOT_OKAY);
+
+	if (cast_handle->trace.mode)
+	{
+		swprintf(cast_handle->wcp_msg1, L"knobpBeginProcess: Successful Finish");
+	   (cast_handle->slout1)->Message_Wide(FIRST_LINE, cast_handle->wcp_msg1);
+   }
+
+	return(OKAY);
+}
+
+/*
+ * FUNCTION: knobpSetValidBits() 
+ * DESCRIPTION:
+ *   Initially set or change the valid bits for processing.  For example the bps may be set to 24
+ *   however valid bits may only be 20.
+ *
+ *   NOTE: THIS FUNCTION MUST BE CALLED AFTER knobpBeginProcess BECAUSE THAT FUNCTION RESETS THE 
+ *         VALID_BITS TO THE SAME AS THE BPS.
+ */
+int knobpSetValidBits(PT_HANDLE *hp_knobp, int i_valid_bits)
+{
+	struct knobpHdlType *cast_handle;
+
+	cast_handle = (struct knobpHdlType *)(hp_knobp);
+
+	if (cast_handle == NULL)
+		return(OKAY);
+
+	if (cast_handle->valid_bits != i_valid_bits)
+	{
+		cast_handle->valid_bits = i_valid_bits;
+	}
+
+	return(OKAY);
+}
+
+/*
+ * FUNCTION: knobp_UpdateBufferLengthInfo() 
+ * DESCRIPTION:
+ *   
+ *  Record into the registry info about the length of the buffer.
+ *
+ *  Check if this is the longest buffer processed so far.  If so it recoreds the length in the
+ *  registry so that the UI can utilize it for determining things like whether or not processing 
+ *  has stopped.
+ *
+ */
+int knobp_UpdateBufferLengthInfo(PT_HANDLE *hp_knobp, int i_num_sample_sets, int *ip_current_buffer_msecs)
+{
+	struct knobpHdlType *cast_handle;
+   
+	int i_longest_buffer_msecs;
+
+	cast_handle = (struct knobpHdlType *)(hp_knobp);
+
+	if (cast_handle == NULL)
+		return(OKAY);
+	
+	/* Calculate the number of msecs in this buffer */
+	*ip_current_buffer_msecs = (int)((i_num_sample_sets * cast_handle->sampling_period) * (realtype)1000.0);
+
+	/* Get the length of longest buffer in msecs so far */
+	if (knobp_SessionReadIntegerValue(hp_knobp, KNOBP_REGISTRY_LONGEST_BUFFER_MSECS_WIDE, 0, 
+												&i_longest_buffer_msecs) != OKAY)
+		return(NOT_OKAY);
+
+	/* Check if this is the longest buffer so far.  If so, record it's length */
+	if (*ip_current_buffer_msecs > i_longest_buffer_msecs)
+	{
+		if (knobp_StoreLongestBufferSize(hp_knobp, *ip_current_buffer_msecs) != OKAY)
+			return(NOT_OKAY);
+	}
+
+	return(OKAY);
+}
+
+
+/*
+ * FUNCTION: knobp_StoreLongestBufferSize() 
+ * DESCRIPTION:
+ *   
+ *  Record into the registry the passed size as the longest buffer processed in msecs.
+ *
+ */
+int knobp_StoreLongestBufferSize(PT_HANDLE *hp_knobp, int i_longest_buffer_msecs)
+{
+	struct knobpHdlType *cast_handle;
+   
+	cast_handle = (struct knobpHdlType *)(hp_knobp);
+
+	if (cast_handle == NULL)
+		return(OKAY);
+	
+	/* 
+	 * NOTE: THIS SHOULD BE MOVED TO SHARED MEMORY.  RIGHT NOW IT MAY FAIL IF RUNNING IN EXE LIKE
+	 *		   INTERNET EXPLORER WHICH DOES NOT ALLOW REGISTRY WRITES.
+	 */
+	if (knobp_SessionWriteIntegerValue(hp_knobp, KNOBP_REGISTRY_LONGEST_BUFFER_MSECS_WIDE, i_longest_buffer_msecs) != OKAY)
+		return(OKAY);
+
+	return(OKAY);
+}

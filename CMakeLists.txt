@@ -1,0 +1,18 @@
+cmake_minimum_required(VERSION 3.22)
+set(CMAKE_OSX_DEPLOYMENT_TARGET "14.0" CACHE STRING "Minimum supported macOS")
+project(KnobMac LANGUAGES C CXX OBJCXX)
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+if(NOT APPLE)
+    message(FATAL_ERROR "Knob CoreAudio engine requires macOS")
+endif()
+add_subdirectory(dsp/portable)
+add_executable(knob-engine engine/audio-devices.cpp engine/audio-bridge.cpp engine/ipc-server.cpp
+    engine/dsp-controller.cpp engine/dsp-controller-controls.cpp engine/dsp-controller-storage.cpp
+    engine/recovery-channel.cpp engine/command-dispatcher.mm engine/engine-main.mm)
+target_compile_definitions(knob-engine PRIVATE KNOB_HAVE_DSP)
+target_compile_options(knob-engine PRIVATE -Wall -Wextra -Werror "$<$<COMPILE_LANGUAGE:OBJCXX>:-fobjc-arc>")
+target_link_libraries(knob-engine PRIVATE knob-dsp "-framework CoreAudio" "-framework CoreFoundation" "-framework Foundation")
+add_executable(knob-supervisor engine/audio-devices.cpp engine/recovery-channel.cpp engine/supervisor-main.cpp)
+target_compile_options(knob-supervisor PRIVATE -Wall -Wextra -Werror)
+target_link_libraries(knob-supervisor PRIVATE "-framework CoreAudio" "-framework CoreFoundation")

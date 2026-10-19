@@ -1,0 +1,520 @@
+/*
+FxSound
+Copyright (C) 2025  FxSound LLC
+
+Contributors:
+	www.theremino.com (2025)
+	
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program.  If not, see <http://www.gnu.org/licenses/>.
+*/
+
+/* knobpUniversal.cpp */
+
+#include "codedefs.h"
+
+#ifndef PT_PORTABLE_DSP
+#include <Windows.h>
+#endif
+#include <math.h>
+#include <stdio.h>
+
+#include "u_knobp.h" 
+
+#include "knobp.h"
+#include "pt_defs.h"
+#include "slout.h"
+#include "knobpDefs.h"
+#include "KnobSdk.h"
+#include "pstr.h"
+#include "knobSharedUtil.h"
+
+/*
+ * FUNCTION: knobpUniversalSetSignalFormat()
+ * DESCRIPTION:
+ *
+ *   Takes the current signal format and if it has changed then update processing code settings accordingly.
+ *   This function can be called with each buffer.
+ *
+ */
+int knobpUniversalSetSignalFormat(PT_HANDLE *hp_knobp, int i_bps, int i_nch, int i_srate, int i_valid_bits)
+{	
+	struct knobpHdlType *cast_handle;
+
+	cast_handle = (struct knobpHdlType *)(hp_knobp);
+
+	if (cast_handle == NULL)
+		return(OKAY);
+
+	/* Check if the format has changed */  
+	if ((i_bps != cast_handle->universal.last_called_bps) || 
+		 (i_nch != cast_handle->universal.last_called_nch) || 
+		 (i_srate != cast_handle->universal.last_called_srate) || 
+		 (i_valid_bits != cast_handle->universal.last_called_valid_bits))
+	{
+	   /* Note call is always set up for 32 bit processing since conversion is done
+		 * before and after processing calls
+		 */
+		cast_handle->universal.last_called_bps = i_bps;
+		cast_handle->universal.last_called_nch = i_nch;
+		cast_handle->universal.last_called_srate = i_srate;
+		cast_handle->universal.last_called_valid_bits = i_valid_bits;
+
+		if (knobpBeginProcess(hp_knobp, i_bps, i_nch, i_srate) != OKAY)
+			return(NOT_OKAY);
+
+		if (knobpSetValidBits(hp_knobp, i_valid_bits) != OKAY)
+			return(NOT_OKAY);
+	}
+
+	return(OKAY);
+}
+
+/*
+ * FUNCTION: knobpUniversalModifySamples()
+ * DESCRIPTION:
+ *
+ *   Takes the current signal format and if it has changed then update processing code settings accordingly.
+ *   This function can be called with each buffer.
+ *
+ */
+int knobpUniversalModifySamples(PT_HANDLE *hp_knobp, short int *si_input_samples, short int *si_output_samples, int i_num_sample_sets, int i_check_for_duplicate_buffers)
+{	
+	struct knobpHdlType *cast_handle;
+
+	cast_handle = (struct knobpHdlType *)(hp_knobp);
+
+	if (cast_handle == NULL)
+		return(OKAY);
+
+	realtype *r_in, *r_out;
+	int index;
+	int i;
+	int process_count;				// The number of processing loops used to process buffer
+	int leftover_sample_sets;		// The number of sample sets not processed in loop calls
+	int num_process_loop;			// The number of sample sets that will be processed per loop
+	int total_bytes_to_increment;	// Used to increment sample pointers
+	int i_reorder;
+	BYTE *bp_in;						// Will be used to implement processing loops
+	BYTE *bp_out;
+	int i_do_not_process;
+	int bytes_total;
+	int byte_index;
+	int i_current_buffer_hash;
+	int hash_index;
+	BOOL b_lean_and_mean;
+	int i_is_all_zeros;
+
+/*
+	if (cast_handle->trace.mode)
+	{
+	   swprintf(cast_handle->wcp_msg1, L"knobpUniversalModifySamples: Entered");
+	   (cast_handle->slout1)->Message_Wide(FIRST_LINE, cast_handle->wcp_msg1);
+	}
+*/
+
+	/* 
+	 * Set whether we are going to do lean and mean processing which is necessary for the new
+	 * KNOB 11 style which uses the virtual soundcard.
+	 */
+	b_lean_and_mean = FALSE;
+	if (!cast_handle->processing_only)
+	{
+		b_lean_and_mean = TRUE;
+	}
+
+	/* Calculate the total number of bytes in the input buffer */
+	bytes_total = i_num_sample_sets * cast_handle->universal.last_called_nch *cast_handle->universal.last_called_bps / 8;
+
+	i_do_not_process = IS_FALSE;
+
+	// If surround sound, set sample reorder flag
+	if ( cast_handle->universal.last_called_nch > 2 )
+		i_reorder = IS_TRUE;
+	else
+		i_reorder = IS_FALSE;
+
+	// Note that knobForWmp.cpp already forces a buffer size that works well for metering.
+	// Here we just need a protection against a buffer that is too large, we process it in chunks.
+	// Break processing into multiple calls if number of samples sets is above our desired size, but only in stereo or mono case
+	// Original calc below is thus no longer needed, kept for reference.
+	//
+	// desired_sample_set_size = (int)( (realtype)i_srate * (realtype)KNOB_FOR_WMP_MAX_BUFFER_SIZE_MS * (realtype)0.001 );
+
+	if( i_num_sample_sets > (int)DAW_MAX_BUFFER_SIZE )
+	{
+		process_count = i_num_sample_sets/(int)DAW_MAX_BUFFER_SIZE;
+		leftover_sample_sets = i_num_sample_sets - (process_count * (int)DAW_MAX_BUFFER_SIZE);
+		num_process_loop = (int)DAW_MAX_BUFFER_SIZE;
+	}
+	else
+	{	// This is the case were the number of sample sets is smaller than or equal to our max size
+		process_count = 1;
+		leftover_sample_sets = 0;
+		num_process_loop = i_num_sample_sets;
+	}
+
+	bp_in = (BYTE *)si_input_samples;
+	bp_out = (BYTE *)si_output_samples;
+	total_bytes_to_increment = num_process_loop * cast_handle->universal.last_called_nch * (cast_handle->universal.last_called_bps/8); // Calculate the pointer increment in bytes
+
+	for(i=0; i<process_count; i++)	// Loop to process sub-buffers
+	{
+		if ( (cast_handle->universal.last_called_bps == 8) || (cast_handle->universal.last_called_bps == 16) || (cast_handle->universal.last_called_bps == 24) )
+		{
+			if (knobpModifyShortIntSamples(hp_knobp, (short int *)bp_in, (short int *)bp_out, num_process_loop) != OKAY)
+				return(NOT_OKAY);
+		}
+		else if ( cast_handle->universal.last_called_bps == 32 )
+		{
+			// Real processing does processing in place, first copy output to input
+			r_in = (realtype *)bp_in;
+			r_out = (realtype *)bp_out;
+
+			for(index=0; index < (num_process_loop * cast_handle->universal.last_called_nch); index++)
+				r_out[index] = r_in[index];
+
+			if (knobpModifyRealtypeSamples(hp_knobp, r_out, num_process_loop, i_reorder) != OKAY)
+				return(NOT_OKAY);
+		}
+
+		bp_in += total_bytes_to_increment;	// Increment sample pointers
+		bp_out += total_bytes_to_increment;
+	}
+
+	if( leftover_sample_sets > 0 ) // If there are any leftover samples, process them
+	{
+		if ( (cast_handle->universal.last_called_bps == 8) || (cast_handle->universal.last_called_bps == 16) || (cast_handle->universal.last_called_bps == 24) )
+		{
+			if (knobpModifyShortIntSamples(hp_knobp, (short int *)bp_in, (short int *)bp_out, leftover_sample_sets) != OKAY)
+				return(NOT_OKAY);
+		}
+		else if ( cast_handle->universal.last_called_bps == 32 )
+		{
+			// Real processing does processing in place, first copy output to input
+			r_in = (realtype *)bp_in;
+			r_out = (realtype *)bp_out;
+
+			for(index=0; index < (leftover_sample_sets * cast_handle->universal.last_called_nch); index++)
+				r_out[index] = r_in[index];
+
+			if (knobpModifyRealtypeSamples(hp_knobp, r_out, leftover_sample_sets, i_reorder) != OKAY)
+				return(NOT_OKAY);
+		}
+	}
+
+	/* Calculate the hash for the processed buffer */
+	if (!b_lean_and_mean)
+	{
+		if (i_check_for_duplicate_buffers)
+		{
+			if (knobp_UniversalCalcBufferHash(hp_knobp, (BYTE *)si_output_samples, bytes_total, &(cast_handle->universal.hash_queue_vals[cast_handle->universal.hash_queue_index])) != OKAY)
+				return(NOT_OKAY);
+
+			/* Trace the hash value of the processed buffer */
+			if (cast_handle->trace.mode)
+			{
+				swprintf(cast_handle->wcp_msg1, L"knobpUniversalModifySamples: processed hash value = %d", cast_handle->universal.hash_queue_vals[cast_handle->universal.hash_queue_index]);
+				(cast_handle->slout1)->Message_Wide(FIRST_LINE, cast_handle->wcp_msg1);	
+			}
+
+			/* Increment the index for the next hash value to store */
+			(cast_handle->universal.hash_queue_index)++;
+			if (cast_handle->universal.hash_queue_index == KNOBP_UNIVERSAL_HASH_QUEUE_SIZE)
+				cast_handle->universal.hash_queue_index = 0;
+		}
+	}
+
+	/* 
+	 * For some strange reason, some players like the windows media player continually play 
+	 * all zero (silent) buffers.  We don't want to count these buffers for the purpose of trial
+	 * version processing time limit.
+	 */
+	if (knobp_UniversalIsBufferAllSilence(hp_knobp, si_input_samples, i_num_sample_sets, 
+												  cast_handle->universal.last_called_nch, cast_handle->universal.last_called_valid_bits, &i_is_all_zeros) != OKAY)
+		return(NOT_OKAY);
+
+	if (!i_is_all_zeros)
+	{
+		/* Update the total processed time in shared memory which will eventually be sent to the UI */
+		if (knobp_UniversalUpdateTotalTimeProcessed(hp_knobp, i_num_sample_sets) != OKAY)
+			return(NOT_OKAY);
+	}
+
+	return(OKAY);
+}
+
+/*
+ * FUNCTION: knobp_UniversalIsBufferAllSilence()
+ * DESCRIPTION:
+ *
+ *   Passes back whether or not the passed buffer is the windows media equivalent of silence.
+ *   When playback has stopped in WMP and apps that use the Windows audio system like Spotify,
+ *   for some reason with 32 bit float data the windows audio system keeps sending buffers with very small offset which
+ *   approaches 6.3606902e-27. This function will assume that any buffer with values all less than
+ *   1.0e-20 is silence.
+ *
+ */
+int knobp_UniversalIsBufferAllSilence(PT_HANDLE *hp_knobp, short int *si_input_samples, int i_num_sample_sets, int i_num_channels, int i_num_bits, int *ip_is_all_zeros)
+{	
+	struct knobpHdlType *cast_handle;
+
+	cast_handle = (struct knobpHdlType *)(hp_knobp);
+
+	if (cast_handle == NULL)
+		return(OKAY);
+
+	int i_max_index;
+	int total_bytes;
+	BYTE *bytes;
+	realtype *rpArray;
+	int i;
+
+	*ip_is_all_zeros = IS_TRUE;
+
+	if (i_num_sample_sets == 0)
+		return(OKAY);
+
+	if (i_num_channels == 0)
+		return(OKAY);
+
+	i_max_index = i_num_sample_sets * i_num_channels;
+
+	// In the int case they likely are not using the offset value seen in the 32 bit float case, do a normal check.
+	if( i_num_bits < 32 )
+	{
+		total_bytes = (i_num_bits/8) * i_max_index;
+		bytes = (BYTE *)si_input_samples;
+
+		for(i=0; i<i_max_index; i++)
+		{
+			if (bytes[i] != 0)
+			{
+				*ip_is_all_zeros = IS_FALSE;
+				break;
+			}
+		}
+	}
+	else
+	{
+		rpArray = (realtype *)si_input_samples;
+
+		for(i=0; i<i_max_index; i++)
+		{
+			if ( fabs(rpArray[i]) > (realtype)1.0e-20 ) // Since window system uses and offset, can't check for zero.
+			{
+				*ip_is_all_zeros = IS_FALSE;
+				break;
+			}
+		}
+	}
+
+	return(OKAY);
+}
+
+/*
+ * FUNCTION: knobp_UniversalUpdateTotalTimeProcessed()
+ * DESCRIPTION:
+ *
+ *   Update the total amount of time processed by adding the amount of time processed by the last buffer.
+ *
+ */
+int knobp_UniversalUpdateTotalTimeProcessed(PT_HANDLE *hp_knobp, int i_num_sample_sets)
+{	
+	struct knobpHdlType *cast_handle;
+
+	cast_handle = (struct knobpHdlType *)(hp_knobp);
+
+	if (cast_handle == NULL)
+		return(OKAY);
+
+	unsigned long ul_msecs_processed_by_buffer;
+	unsigned long ul_previous_total_processed_time_msecs;
+	unsigned long ul_new_total_processed_time_msecs;
+	int bypass_all;
+
+	realtype r_num_secs;
+
+	if (cast_handle->universal.last_called_srate <= 0)
+		return(OKAY);
+
+	if (cast_handle->hp_sharedUtil == NULL)
+		return(OKAY);
+
+	r_num_secs = (realtype)i_num_sample_sets / (realtype)cast_handle->universal.last_called_srate;
+	ul_msecs_processed_by_buffer = (long)(r_num_secs * (realtype)1000);
+
+	if (knobpGetButtonValue(hp_knobp, KNOB_UI_BUTTON_BYPASS, &bypass_all) != OKAY)
+		return(NOT_OKAY);
+
+	if (!bypass_all)
+	{
+		cast_handle->ul_total_msecs_audio_processed_time += ul_msecs_processed_by_buffer;
+	}
+	
+	/* Get the old total processed time */
+	if (knobSharedUtilGetTotalProcessedTime(cast_handle->hp_sharedUtil, &ul_previous_total_processed_time_msecs) != OKAY)
+		return(NOT_OKAY);
+
+	/* 
+	 * Calculate the new total processed time 
+	 * NOTE: It is okay if this wraps around because all the comparison values will also wrap around.
+	 */
+	#ifdef PT_PORTABLE_DSP
+	ul_new_total_processed_time_msecs = cast_handle->ul_total_msecs_audio_processed_time;
+	#else
+	ul_new_total_processed_time_msecs = ul_previous_total_processed_time_msecs + ul_msecs_processed_by_buffer;
+	#endif
+
+	/* Store the new total processed time in shared memory */
+	if (knobSharedUtilSetTotalProcessedTime(cast_handle->hp_sharedUtil, ul_new_total_processed_time_msecs) != OKAY)
+		return(NOT_OKAY);
+
+	return(OKAY);
+}
+
+
+/*
+ * FUNCTION: knobp_UniversalCalcBufferHash()
+ * DESCRIPTION:  Generates a hash code for the audio buffer content.  
+ *					  Generates a zero value if the buffer is all zero.
+ */
+int knobp_UniversalCalcBufferHash(PT_HANDLE *hp_knobp, BYTE *lpData, DWORD dw_buffer_length, int *ip_hashcode)
+{
+	struct knobpHdlType *cast_handle;
+
+	cast_handle = (struct knobpHdlType *)(hp_knobp);
+
+	if (cast_handle == NULL)
+		return(OKAY);
+
+	const int p = 16777619; 
+	int hash = (int)2166136261; 
+	unsigned int i;
+	BOOL all_zero = TRUE;
+
+	*ip_hashcode = 0;
+
+	if ((lpData == NULL) || (dw_buffer_length <= 0))
+		return(OKAY);
+
+	for (i=0; i < dw_buffer_length; i++) 
+	{
+		if( lpData[i] != 0 )
+			all_zero = FALSE;
+
+		hash = (hash ^ (lpData[i]) ) * p;
+	}
+
+	hash += hash << 13; 
+	hash ^= hash >> 7; 
+	hash += hash << 3; 
+	hash ^= hash >> 17; 
+	hash += hash << 5;
+
+	if( all_zero == TRUE )
+		hash = 0;
+
+	*ip_hashcode = hash; 
+
+	return(OKAY);
+}
+
+/*
+ * FUNCTION: knobpUniversalCheckParentCompatibility()
+ * DESCRIPTION:
+ *
+ *   Check if the parent app is compatible with processing. 
+ *
+ *   For example, if the processing module is dsound.dll and the parent is Winamp, then we don't
+ *   want to do processing because it will be taken care of in the knobForWinamp dll.  We don't want
+ *   to do double processing.
+ *  
+ */
+int knobpUniversalCheckParentCompatibility(PT_HANDLE *hp_knobp, int i_processing_module_type, int *ip_allow_processing)
+{	
+	struct knobpHdlType *cast_handle;
+
+	cast_handle = (struct knobpHdlType *)(hp_knobp);
+
+	if (cast_handle == NULL)
+		return(OKAY);
+
+	*ip_allow_processing = IS_TRUE;
+
+	int i_location;
+	int i_found;
+
+	if ((i_processing_module_type == KNOB_UNIVERSAL_PROCESSING_TYPE_DSOUND_DLL) ||
+		 (i_processing_module_type == KNOB_UNIVERSAL_PROCESSING_TYPE_WINMM_DLL))
+	{
+		/* Check if the parent is a player with a player specific plugin */
+		if (pstrCalcLocationOfStrInStr_Wide(cast_handle->universal.wcp_parent_exe_path_uppercase, L"WINAMP", 0, &i_location, &i_found) != OKAY)
+			return(NOT_OKAY);
+		if (i_found)
+			*ip_allow_processing = IS_FALSE;
+
+		if (pstrCalcLocationOfStrInStr_Wide(cast_handle->universal.wcp_parent_exe_path_uppercase, L"WINDOWS MEDIA PLAYER", 0, &i_location, &i_found) != OKAY)
+			return(NOT_OKAY);
+		if (i_found)
+			*ip_allow_processing = IS_FALSE;
+
+		if (pstrCalcLocationOfStrInStr_Wide(cast_handle->universal.wcp_parent_exe_path_uppercase, L"WMPLAYER.EXE", 0, &i_location, &i_found) != OKAY)
+			return(NOT_OKAY);
+		if (i_found)
+			*ip_allow_processing = IS_FALSE;
+
+		if (pstrCalcLocationOfStrInStr_Wide(cast_handle->universal.wcp_parent_exe_path_uppercase, L"BSPLAYER", 0, &i_location, &i_found) != OKAY)
+			return(NOT_OKAY);
+		if (i_found)
+			*ip_allow_processing = IS_FALSE;
+
+		if (pstrCalcLocationOfStrInStr_Wide(cast_handle->universal.wcp_parent_exe_path_uppercase, L"FOOBAR2000", 0, &i_location, &i_found) != OKAY)
+			return(NOT_OKAY);
+		if (i_found)
+			*ip_allow_processing = IS_FALSE;
+
+		if (pstrCalcLocationOfStrInStr_Wide(cast_handle->universal.wcp_parent_exe_path_uppercase, L"GOMPLAYER", 0, &i_location, &i_found) != OKAY)
+			return(NOT_OKAY);
+		if (i_found)
+			*ip_allow_processing = IS_FALSE;
+
+		if (pstrCalcLocationOfStrInStr_Wide(cast_handle->universal.wcp_parent_exe_path_uppercase, L"GOM.EXE", 0, &i_location, &i_found) != OKAY)
+			return(NOT_OKAY);
+		if (i_found)
+			*ip_allow_processing = IS_FALSE;
+
+		if (pstrCalcLocationOfStrInStr_Wide(cast_handle->universal.wcp_parent_exe_path_uppercase, L"JETAUDIO", 0, &i_location, &i_found) != OKAY)
+			return(NOT_OKAY);
+		if (i_found)
+			*ip_allow_processing = IS_FALSE;
+
+		if (pstrCalcLocationOfStrInStr_Wide(cast_handle->universal.wcp_parent_exe_path_uppercase, L"MEDIAMONKEY", 0, &i_location, &i_found) != OKAY)
+			return(NOT_OKAY);
+		if (i_found)
+			*ip_allow_processing = IS_FALSE;
+
+		if (pstrCalcLocationOfStrInStr_Wide(cast_handle->universal.wcp_parent_exe_path_uppercase, L"DIVX", 0, &i_location, &i_found) != OKAY)
+			return(NOT_OKAY);
+		if (i_found)
+			*ip_allow_processing = IS_FALSE;
+	}
+
+	if (cast_handle->trace.mode)
+	{
+		swprintf(cast_handle->wcp_msg1, L"knobpUniversalCheckParentCompatibility: allow_processing = %d", *ip_allow_processing);
+		(cast_handle->slout1)->Message_Wide(FIRST_LINE, cast_handle->wcp_msg1);
+	}
+
+	return(OKAY);
+}

@@ -1,0 +1,15 @@
+# Build output
+/build/
+/dist/
+.build/
+node_modules/
+__pycache__/
+*.pyc
+
+# macOS
+.DS_Store
+
+# Local connectors, settings and tool state (may hold secrets)
+.mcp.json
+.claude/settings.local.json
+.code-review-graph/
