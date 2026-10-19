@@ -65,6 +65,14 @@ enum Snapshot {
         Task { @MainActor in
             render(AppIconView(size: 1024), scheme: .dark, to: folder.appendingPathComponent("icon-1024.png"))
             render(InstallerBackgroundView(), scheme: .light, to: folder.appendingPathComponent("installer-background.png"))
+            let statuses: [(String, UpdateStatus)] = [("checking", .checking), ("downloading", .downloading(progress: nil)),
+                                                     ("installing", .installing), ("uptodate", .upToDate),
+                                                     ("failed", .failed(message: "Couldn't update Knob. It will try again later."))]
+            for (name, status) in statuses {
+                render(UpdateStatusLabel(status: status).padding(8).background(Palette.dark.panelTop)
+                        .environment(\.colorScheme, .dark),
+                       scheme: .dark, to: folder.appendingPathComponent("update-\(name).png"))
+            }
             for (name, scheme) in [("light", ColorScheme.light), ("dark", ColorScheme.dark)] {
                 render(AboutView().environment(\.colorScheme, scheme), scheme: scheme,
                        to: folder.appendingPathComponent("about-\(name).png"))

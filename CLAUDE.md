@@ -162,7 +162,7 @@ Never hardcode output devices, preset names, EQ band count or frequencies, or ef
 
 ### 2. Pickers, dialogs and time
 - Never build a custom dropdown. Use the shared picker component (built on SwiftUI `Picker`/`Menu`).
-- Never use `NSAlert` or ad-hoc alerts for confirmations. Use one shared confirm component built on `.confirmationDialog`.
+- Never use `NSAlert` or ad-hoc alerts for confirmations. In the menu bar panel, confirm inside the control itself (like the preset strip's inline "Delete?" row): a dialog can take focus from the panel and close it. Elsewhere (windows), use `.confirmationDialog`.
 - **Time is always 12-hour with uppercase AM/PM**, never 24-hour, in every displayed time string.
 
 ### 3. Persisted UI state
@@ -202,12 +202,13 @@ If the same UI pattern is needed in 2+ places, extract it into `Components/`; ne
 | `HardwareFader` | Vertical fader for the dark screen, -1...1 with centre detent |
 | `SegmentedTabs` | **21st.dev Segmented Control** (halaska-studio, MIT) port: sliding thumb, arrow keys |
 | `PowerSwitch` | **21st.dev Switch** (serafimcloud) port: pill thumb, sliding gradient track, 250/125ms timing |
-| `PillMenu` | The only dropdown: native `Menu` styled as a recessed pill |
+| `PillMenu` | The only dropdown: native `Menu` styled as a recessed pill. Its label must be a single `Text`: a label made of several views (icon + text) got split into separate menu buttons and clicking the name opened an empty menu. Draw extra decoration (chevron, pill) outside the label with hit testing off |
 | `RecessedPill`, `HardwareIconButton` | Pill background and small square icon button |
 | `InsetScreen` | Dark recessed screen with the level-driven orange glow |
 | `SpectrumView` | Live spectrum bars from the engine's 10 bands |
 | `LevelMeter` | L/R meters on a -48...0 dB scale |
 | `Grain` | Deterministic panel speckle |
+| `UpdateStatusLabel` | Updater state beside the version in the header: short text ("Downloading…"), full sentence as tooltip |
 | `EngravedLabel` | Uppercase control label (in `Views/PanelView.swift`) |
 
 ### 11. UI copy
@@ -257,3 +258,6 @@ Brief, dated record of what was worked on per day, in the `Knob: <summary>` form
 - Knob: OFF now fully stops Knob, so the orange microphone dot goes away; settings come back on ON; the permission prompt explains Knob never uses the microphone
 - Knob: save your own presets from the preset strip
 - Knob: the sound engine writes its errors to a log, so unexpected stops can be explained
+- Knob: fixed the preset and output dropdowns opening empty when clicking their name
+- Knob: delete your own presets from the preset strip (factory presets can't be deleted)
+- Knob: the version shows beside the wordmark, with the updater's status next to it while it checks, downloads or installs

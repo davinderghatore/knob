@@ -383,6 +383,20 @@ final class KnobModel: ObservableObject {
         return true
     }
 
+    /// Deletes one of the user's own presets. Factory presets can't be deleted. The current sound
+    /// stays as it is; only the saved file goes.
+    func deletePreset(_ preset: Preset) {
+        guard preset.isUser else { return }
+        do { try FileManager.default.removeItem(at: preset.url) }
+        catch { notice = "The preset couldn't be deleted. Try again."; return }
+        presets = Preset.all()
+        if currentPreset == preset {
+            currentPreset = nil
+            UserDefaults.standard.removeObject(forKey: PersistKey.lastPreset.rawValue)
+        }
+        notice = nil
+    }
+
     func select(_ preset: Preset) {
         currentPreset = preset
         UserDefaults.standard.set(preset.url.path, forKey: PersistKey.lastPreset.rawValue)

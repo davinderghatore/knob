@@ -11,6 +11,10 @@ struct PillMenu<Item: Hashable>: View {
 
     @Environment(\.colorScheme) private var scheme
 
+    /// The menu's label is a single piece of text that fills the whole pill, so a click anywhere
+    /// on the pill opens the menu. (A label built from several views, an icon plus text, made
+    /// SwiftUI split it into separate menu buttons, and clicking the name opened an empty menu.)
+    /// The chevron and the pill are drawn around it and never take clicks.
     var body: some View {
         let p = Palette.of(scheme)
         Menu {
@@ -20,23 +24,28 @@ struct PillMenu<Item: Hashable>: View {
                 }
             }
         } label: {
-            HStack(spacing: 6) {
-                Image(systemName: "chevron.down").font(.system(size: 8, weight: .bold))
-                Text(selection.map(title) ?? placeholder)
-                    .font(.system(size: 11, weight: .medium))
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                Spacer(minLength: 0)
-            }
-            .foregroundStyle(p.label)
-            .padding(.horizontal, 10)
-            .frame(height: 24)
-            .background(RecessedPill())
-            .contentShape(Rectangle())
+            Text(selection.map(title) ?? placeholder)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(p.label)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .padding(.leading, 24)
+                .padding(.trailing, 10)
+                .frame(maxWidth: .infinity, minHeight: 24, maxHeight: 24, alignment: .leading)
+                .contentShape(Rectangle())
         }
         .menuStyle(.button)
         .buttonStyle(.plain)
         .menuIndicator(.hidden)
+        .background(RecessedPill())
+        .overlay(alignment: .leading) {
+            Image(systemName: "chevron.down")
+                .font(.system(size: 8, weight: .bold))
+                .foregroundStyle(p.label)
+                .padding(.leading, 10)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+        }
     }
 }
 
