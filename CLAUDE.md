@@ -29,7 +29,7 @@ sh tests/driver-build.sh "$PWD/build/driver/Knob.driver"
 ```bash
 app/build-app.sh [debug|release]                          # build/Knob.app (presets inside, no Dock icon)
 build/Knob.app/Contents/MacOS/Knob --demo                 # sample engine + sample volume
-build/Knob.app/Contents/MacOS/Knob --snapshot DIR         # panel PNGs: light/dark x effects/equalizer
+build/Knob.app/Contents/MacOS/Knob --snapshot DIR         # PNGs: light/dark x effects/equalizer, engine on (panel-*) and off (offline-*)
 build/Knob.app/Contents/MacOS/Knob --volume-check 3       # real Mac volume: listen, set, restore
 ```
 - Look at the `--snapshot` PNGs after every UI change: this terminal has no Screen Recording permission, so the live menu bar can't be captured.
@@ -48,7 +48,7 @@ npm run dev:once   # build and launch once
 - Editing `dev.sh` doesn't affect a watcher that's already running: restart `npm run dev` afterwards.
 - Edits in `app/`, `engine/` and `dsp/` show up in about 3 seconds (the first build of the day takes about a minute). `driver/` edits can't be swapped live and still need a reinstall.
 - The dev copy is `build/dev/Knob.app` with bundle ID `io.github.simranxdhindsa.knob.dev`, kept apart from an installed Knob and its settings.
-- It launches with `KNOB_DEV_OPEN_POPOVER=1`; the app should reopen its popover when that is set, so changes are visible without clicking.
+- It launches with `KNOB_DEV_OPEN_POPOVER=1`, which makes Knob also show its panel in a floating "Knob (dev)" window (`DevWindow.swift`). The menu bar icon is often hidden behind the MacBook notch, so this window is where the user sees changes. It never takes focus from the editor and remembers where it was dragged.
 - Live code injection without relaunching needs full Xcode, which this Mac doesn't have; relaunching is the intended approach.
 - A failed build leaves the last good build running and prints the error.
 

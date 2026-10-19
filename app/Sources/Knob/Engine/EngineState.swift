@@ -55,5 +55,6 @@ enum EffectSlot: Int, CaseIterable, Identifiable {
     case clarity, ambience, surround, dynamicBoost, bass
     var id: Int { rawValue }
     var parameter: String { ["fidelity", "ambience", "surround", "dynamicBoost", "bass"][rawValue] }
-    var title: String { ["CLARITY", "AMBIENCE", "SURROUND", "DYNAMIC", "BASS"][rawValue] }
+    /// Display name, as people know these effects.
+    var title: String { ["Clarity", "Ambience", "Surround Sound", "Dynamic Boost", "Bass Boost"][rawValue] }
 }

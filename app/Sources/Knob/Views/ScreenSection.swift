@@ -15,9 +15,7 @@ struct ScreenSection: View {
                     SpectrumView(bands: model.spectrum, showsGrid: tab == .equalizer,
                                  intensity: tab == .effects ? 0.45 : 0.8)
                         .opacity((model.powerOn ? 1 : 0.35) * (tab == .equalizer ? 0.45 : 1))
-                    if model.connection == .offline {
-                        offline
-                    } else if tab == .effects {
+                    if tab == .effects {
                         EffectsGrid(model: model)
                     } else {
                         EqualizerBank(model: model)
@@ -25,20 +23,22 @@ struct ScreenSection: View {
                 }
                 .frame(height: 176)
                 .disabled(model.connection != .online)
+                if model.connection == .offline { offlineNote }
             }
         }
         .environment(\.colorScheme, .dark)
     }
 
-    private var offline: some View {
-        VStack(spacing: 6) {
-            Image(systemName: "waveform.slash").font(.system(size: 20, weight: .light))
-            Text("The sound engine isn't running yet.").font(.system(size: 11, weight: .medium))
-            Text("Volume still works. Effects and EQ come back when it starts.")
-                .font(.system(size: 10)).multilineTextAlignment(.center)
+    /// Shown under the controls (never instead of them) while the engine isn't running.
+    private var offlineNote: some View {
+        HStack(spacing: 6) {
+            Circle().fill(Screen.textTertiary).frame(width: 5, height: 5)
+            Text("Sound engine is off. Volume still works.")
+                .font(.system(size: 10, weight: .medium))
         }
         .foregroundStyle(Screen.textSecondary)
-        .padding(.horizontal, 20)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -50,12 +50,15 @@ struct EffectsGrid: View {
         HStack(spacing: 0) {
             ForEach(EffectSlot.allCases) { slot in
                 VStack(spacing: 2) {
-                    Text(slot.title)
-                        .font(.system(size: 8.5, weight: .semibold)).tracking(0.7)
+                    Text(slot.title.uppercased())
+                        .font(.system(size: 8.5, weight: .semibold)).tracking(0.6)
                         .foregroundStyle(Screen.text)
+                        .multilineTextAlignment(.center)
+                        .lineLimit(2)
+                        .frame(width: 62, height: 22, alignment: .bottom)
                     RealisticKnob(value: Binding(get: { model.effects[slot.rawValue] }, set: { model.setEffect(slot, $0) }),
                                   size: 54, defaultValue: 0, showsMinMax: false,
-                                  accessibilityLabel: slot.title.capitalized,
+                                  accessibilityLabel: slot.title,
                                   accessibilityValue: "\(Int((model.effects[slot.rawValue] * 10).rounded())) of 10",
                                   onEditingChanged: model.editingChanged)
                     Text("\(Int((model.effects[slot.rawValue] * 10).rounded()))")
@@ -66,7 +69,7 @@ struct EffectsGrid: View {
                 .frame(maxWidth: .infinity)
             }
         }
-        .padding(.top, 16)
+        .padding(.top, 10)
         .frame(maxHeight: .infinity, alignment: .top)
     }
 }
@@ -76,7 +79,27 @@ struct EqualizerBank: View {
     @ObservedObject var model: KnobModel
     private let faderHeight: CGFloat = 128
 
+    /// Placeholder faders shown (disabled) until the engine reports its real bands.
+    private static let skeletonBands = 10
+
     var body: some View {
+        if model.eq.isEmpty { skeleton } else { bank }
+    }
+
+    private var skeleton: some View {
+        HStack(spacing: 0) {
+            ForEach(0..<Self.skeletonBands, id: \.self) { _ in
+                HardwareFader(value: .constant(0), height: faderHeight, accessibilityLabel: "Equalizer band",
+                              accessibilityValue: "Unavailable")
+                    .frame(maxWidth: .infinity)
+            }
+        }
+        .padding(.bottom, 17)
+        .frame(maxHeight: .infinity, alignment: .bottom)
+        .disabled(true)
+    }
+
+    private var bank: some View {
         VStack(spacing: 8) {
             HStack(spacing: 0) {
                 ForEach(model.eq.indices, id: \.self) { band in

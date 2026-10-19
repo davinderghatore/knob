@@ -31,6 +31,7 @@ struct KnobApp: App {
                               volume: demo ? DemoVolume() : SystemVolume())
         _model = StateObject(wrappedValue: model)
         model.start()
+        DispatchQueue.main.async { DevWindow.showIfRequested(model: model) }
         ProcessInfo.processInfo.disableAutomaticTermination("Knob lives in the menu bar")
         if ProcessInfo.processInfo.environment["KNOB_DEV_OPEN_POPOVER"] == "1" {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { DevPopover.open() }

@@ -25,6 +25,18 @@ enum Snapshot {
                 }
             }
             model.panelClosed()
+
+            // Engine off: what the panel looks like before the engine is installed or running.
+            let offline = KnobModel(engine: SocketEngine(path: "/nonexistent/knob-engine.sock"), volume: DemoVolume())
+            offline.start()
+            await offline.refresh()
+            for (name, scheme) in [("light", ColorScheme.light), ("dark", ColorScheme.dark)] {
+                for tab in ScreenSection.Tab.allCases {
+                    UserDefaults.standard.set(tab.rawValue, forKey: PersistKey.selectedTab.rawValue)
+                    render(PanelView(model: offline).environment(\.colorScheme, scheme), scheme: scheme,
+                           to: folder.appendingPathComponent("offline-\(name)-\(tab.rawValue).png"))
+                }
+            }
             exit(0)
         }
         app.run()

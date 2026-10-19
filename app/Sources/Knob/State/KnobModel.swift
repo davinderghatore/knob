@@ -50,7 +50,11 @@ final class KnobModel: ObservableObject {
 
     // MARK: Live updates (only while the panel is open)
 
+    /// Counts open panels: the menu bar panel, plus the dev window in dev mode.
+    private var openPanels = 0
+
     func panelOpened() {
+        openPanels += 1
         guard liveTask == nil else { return }
         liveTask = Task { [weak self] in
             while !Task.isCancelled {
@@ -61,6 +65,8 @@ final class KnobModel: ObservableObject {
     }
 
     func panelClosed() {
+        openPanels = max(0, openPanels - 1)
+        guard openPanels == 0 else { return }
         liveTask?.cancel()
         liveTask = nil
     }
