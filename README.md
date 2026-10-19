@@ -260,6 +260,9 @@ Full rules live in [`CLAUDE.md`](./CLAUDE.md).
 
 Knob is designed and built by **[Simran Dhindsa](https://github.com/simranxdhindsa)**.
 
+[![GitHub](https://img.shields.io/badge/GitHub-simranxdhindsa-181717?style=for-the-badge&logo=github&logoColor=white)](https://github.com/simranxdhindsa)
+[![LinkedIn](https://img.shields.io/badge/LinkedIn-Simran%20Dhindsa-0A66C2?style=for-the-badge&logo=linkedin&logoColor=white)](https://www.linkedin.com/in/simran-dhindsa-0aa7992b9/)
+
 - Tabs adapted from the [Segmented Control](https://21st.dev/halaska-studio/segmented-control) by Halaska (MIT) on 21st.dev.
 - Power switch adapted from the [Switch](https://21st.dev/serafimcloud/switch) by serafimcloud on 21st.dev.
 - The audio device follows Apple's AudioServerPlugIn sample code (`driver/apple-sample-license.txt`).
@@ -277,7 +280,7 @@ Free software under the [GNU Affero General Public License v3](LICENSE). See [`N
 
 **TURN · TUNE · FLOW**
 
-<sub>Built by <a href="https://github.com/simranxdhindsa">Simran Dhindsa</a></sub>
+<sub>Built by <a href="https://github.com/simranxdhindsa">Simran Dhindsa</a> · <a href="https://www.linkedin.com/in/simran-dhindsa-0aa7992b9/">LinkedIn</a></sub>
 
 <sub><a href="#">⬆ Back to top</a></sub>
 
